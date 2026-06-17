@@ -3,24 +3,24 @@ import pandas as pd
 import requests
 import re
 
-# Konfigurasi halaman agar fullscreen dan rapi
+# Konfigurasi halaman
 st.set_page_config(layout="wide", page_title="Task Force Dashboard NOP")
 
-# --- HELPER FUNCTION: Konversi Link GDrive agar bisa tampil sebagai gambar ---
+# --- HELPER FUNCTION: Konversi Link GDrive (VERSI REVISI) ---
 def konversi_link_gdrive(url_mentah):
-    if not url_mentah or str(url_mentah).strip() == "" or str(url_mentah).lower() == "nan":
+    if pd.isna(url_mentah) or not url_mentah or str(url_mentah).strip() == "":
         return None
         
     url_str = str(url_mentah)
     
-    # KUNCI FIX-NYA: Ambil murni link-nya aja, buang teks "Open Url" atau spasi/enter
-    match = re.search(r'(https?://[^\s,]+)', url_str)
+    # FIX: Regex ini sekarang mengabaikan tanda kutip (") dan kurung kurawal (}) dari JSON AppSheet
+    match = re.search(r'(https?://[^\s,"\'\}]+)', url_str)
     if not match:
         return None
         
     link_bersih = match.group(1).strip()
     
-    # Konversi ke direct download link Drive biar bisa ditampilin di Streamlit
+    # Konversi ke direct download link Drive
     if "open?id=" in link_bersih:
         return link_bersih.replace("open?id=", "uc?export=download&id=")
     if "Uc?id=" in link_bersih or "uc?id=" in link_bersih:
@@ -29,12 +29,11 @@ def konversi_link_gdrive(url_mentah):
     return link_bersih
 
 # --- FUNGSI PULL DATA DARI APPSHEET API ---
-@st.cache_data(ttl=300) # Otomatis refresh data dari AppSheet tiap 5 menit
+@st.cache_data(ttl=300)
 def load_data_from_appsheet():
-    # Kredensial asli lo
     APP_ID = "d3525213-95f5-4dff-9eb3-62842c4964f0"
     ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
-    TABLE_NAME = "List" # <--- GANTI INI DENGAN NAMA TABEL DI APPSHEET
+    TABLE_NAME = "List"
     
     url = f"https://api.appsheet.com/api/v2/apps/{APP_ID}/tables/{TABLE_NAME}/Action"
     
@@ -56,38 +55,34 @@ def load_data_from_appsheet():
         response = requests.post(url, headers=headers, json=payload)
         if response.status_code == 200:
             return pd.DataFrame(response.json())
-        else:
-            st.error(f"Gagal konek ke AppSheet API. Kode Status: {response.status_code}")
-            return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Error Koneksi: {e}")
+        return pd.DataFrame()
+    except:
         return pd.DataFrame()
 
 # Load data asli
 df = load_data_from_appsheet()
 
 if df.empty:
-    st.warning("Data kosong atau belum terhubung dengan bener ke AppSheet. Cek kembali nama Table lo, Zi.")
+    st.warning("Data kosong atau belum terhubung dengan bener ke AppSheet.")
 else:
     # --- HEADER DASHBOARD ---
     st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 347 | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
-    
     st.divider()
 
     # --- FILTER SIDEBAR & CONTROLLER ---
     st.sidebar.header("⚙️ Dashboard Controller")
     
-    # Pilih kolom acuan site (Ganti 'Site' kalau nama kolom di AppSheet lo beda)
-    kolom_site = 'Site' if 'Site' in df.columns else df.columns[1] 
+    # AUTO-DETECT KOLOM SITE: Nyari kolom yang ada kata 'site' atau 'id', kalau gak ada pakai kolom pertama
+    possible_site_cols = [c for c in df.columns if "site" in c.lower() or "id" in c.lower()]
+    kolom_site = possible_site_cols[0] if possible_site_cols else df.columns[0]
     
     site_pilihan = st.sidebar.selectbox("Pilih Site ID:", df[kolom_site].unique())
-    show_photos = st.sidebar.checkbox("Tampilkan Foto Dokumentasi", value=True, 
-                                      help="Uncheck ini buat ngilangin foto sementara pas mau screenshot.")
+    show_photos = st.sidebar.checkbox("Tampilkan Foto Dokumentasi", value=True)
 
     # Filter data berdasarkan site yang dipilih
     data_site = df[df[kolom_site] == site_pilihan].iloc[0]
 
-    # Menampilkan timestamp update di bawah judul
+    # Timestamp update
     st.write(f"<p style='text-align: center;'><b>Timestamp Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
 
     # --- LAYOUTING UTAMA ---
@@ -138,35 +133,29 @@ else:
         
         st.markdown("---")
         
-        # SAKLAR FOTO SCREENSHOT
+        # SAKLAR FOTO SCREENSHOT (Menggunakan width='stretch' sesuai standar baru Streamlit)
         if show_photos:
             st.markdown("**📸 Foto Dokumentasi Lapangan (GDrive)**")
             f_col1, f_col2 = st.columns(2)
             
             with f_col1:
-                url_kwh = konversi_link_gdrive(data_site.get('KWH Meter'))
-                if url_kwh:
-                    st.image(url_kwh, caption="KWH Meter", use_container_width=True)
+                if url_kwh := konversi_link_gdrive(data_site.get('KWH Meter')):
+                    st.image(url_kwh, caption="KWH Meter", width="stretch")
                     
-                url_recti = konversi_link_gdrive(data_site.get('Foto Rectifier'))
-                if url_recti:
-                    st.image(url_recti, caption="Foto Rectifier", use_container_width=True)
+                if url_recti := konversi_link_gdrive(data_site.get('Foto Rectifier')):
+                    st.image(url_recti, caption="Foto Rectifier", width="stretch")
                     
-                url_mcb = konversi_link_gdrive(data_site.get('MCB PLN'))
-                if url_mcb:
-                    st.image(url_mcb, caption="MCB PLN", use_container_width=True)
+                if url_mcb := konversi_link_gdrive(data_site.get('MCB PLN')):
+                    st.image(url_mcb, caption="MCB PLN", width="stretch")
                     
             with f_col2:
-                url_modul = konversi_link_gdrive(data_site.get('Foto Modul'))
-                if url_modul:
-                    st.image(url_modul, caption="Foto Modul", use_container_width=True)
+                if url_modul := konversi_link_gdrive(data_site.get('Foto Modul')):
+                    st.image(url_modul, caption="Foto Modul", width="stretch")
                     
-                url_batt = konversi_link_gdrive(data_site.get('Battery (Total Pack)'))
-                if url_batt:
-                    st.image(url_batt, caption="Battery Total Pack", use_container_width=True)
+                if url_batt := konversi_link_gdrive(data_site.get('Battery (Total Pack)')):
+                    st.image(url_batt, caption="Battery Total Pack", width="stretch")
                     
-                url_mat = konversi_link_gdrive(data_site.get('Foto Material (Menggunakan Timestemp)'))
-                if url_mat:
-                    st.image(url_mat, caption="Foto Material Timestamp", use_container_width=True)
+                if url_mat := konversi_link_gdrive(data_site.get('Foto Material (Menggunakan Timestemp)')):
+                    st.image(url_mat, caption="Foto Material Timestamp", width="stretch")
         else:
             st.warning("⚠️ Mode Screenshot Aktif: Semua foto disembunyikan sementara dari layar.")
