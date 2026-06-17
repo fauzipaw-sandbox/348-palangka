@@ -30,10 +30,8 @@ def format_site_id(site_id):
 
 # --- Fungsi Pembersih Nama Label Lampiran/Foto ---
 def clean_label_name(name):
-    # Khusus untuk Log Rectifier langsung disingkat
     if "Log Rectifier" in name: 
         return "Log Recty"
-    # Menghapus semua teks penjelasan yang ada di dalam kurung ()
     name_clean = re.sub(r'\s*\(.*?\)\s*', '', str(name))
     return name_clean.strip()
 
@@ -139,8 +137,7 @@ else:
         
     df_merged['dropdown_label'] = df_merged.apply(susun_nama_dropdown, axis=1)
 
-    # --- FIX 3: INJECT CSS CUSTOM UNTUK STYLING PPT PRESENTASI COMPACT ---
-    # padding-top ditambah jadi 3rem agar tidak nabrak top bar Streamlit
+    # --- INJECT CSS CUSTOM UNTUK STYLING PPT PRESENTASI COMPACT ---
     st.markdown("""<style>
     .block-container { padding-top: 3.2rem !important; padding-bottom: 1rem !important; }
     .ppt-header { background-color: #d32f2f; padding: 10px 20px; border-radius: 8px; margin-bottom: 15px; color: white; display: flex; justify-content: space-between; align-items: center; }
@@ -156,10 +153,10 @@ else:
     .lightbox img { max-width: 80%; max-height: 80%; border-radius: 4px; }
     .lightbox .close-lightbox { position: absolute; top: 20px; right: 30px; color: #fff; font-size: 40px; text-decoration: none; }
     div[data-testid="stMetric"] { background-color: #262730; padding: 5px 10px; border-radius: 4px; border: 1px solid #444; }
-    
-    /* CSS Tabel Mini untuk Findings */
     .findings-grid { display: grid; grid-template-columns: auto auto; gap: 8px 15px; background-color: #262730; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; border: 1px solid #444; }
     .f-item { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 4px; }
+    /* CSS Footer Personal */
+    .custom-footer { text-align: center; font-size: 12px; color: #888; margin-top: 30px; border-top: 1px solid #333; padding-top: 10px; }
     </style>""", unsafe_allow_html=True)
 
     # --- ROW 1: TOP BAR TITLE SLIDE (PPT HEADER) ---
@@ -215,11 +212,10 @@ else:
     with col3:
         st.markdown("<div class='ppt-card-gold'><b>🔍 Field Findings & Action Log</b></div>", unsafe_allow_html=True)
         
-        # --- FIX 1: TAMPILAN FINDINGS DIRAPIKAN JADI GRID MINI ---
         st.markdown(f"""
         <div class='findings-grid'>
             <div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div>
-            <div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div>
+            <div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(Faulty: {data_site.get('Total Module faulty', '-')})</span></span></div>
             <div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div>
             <div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div>
             <div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div>
@@ -256,7 +252,6 @@ else:
             is_csv = "csv" in col_name.lower() or ".csv" in url.lower() or "data" in col_name.lower()
             thumb_url, zoom_url, download_url = konversi_link_gdrive(url)
             
-            # --- FIX 2: TERAPKAN FUNGSI PEMBERSIH NAMA DI SINI ---
             base_label = clean_label_name(col_name)
             final_label = f"{base_label} #{idx+1}" if len(urls) > 1 else base_label
             
@@ -293,3 +288,6 @@ else:
             st.markdown(f"""<div class="gallery-container">{"".join(html_items)}</div>""", unsafe_allow_html=True)
         else:
             st.caption("No unique documentation photos found.")
+
+    # --- WATERMARK FOOTER ---
+    st.markdown("<div class='custom-footer'>© 2026 | Created with ❤️ by Fauzi Ramdani - 97122</div>", unsafe_allow_html=True)
