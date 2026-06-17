@@ -12,9 +12,9 @@ APP_ID = "d3525213-95f5-4dff-9eb3-62842c4964f0"
 ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
 TABLE_NAME = "List"
 
-# ⚠️ ISI KREDENSIAL SUPABASE LO DI SINI, ZI!
-SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
-SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
+# ⚠️ PASTIKAN SUPABASE URL DAN KEY LO TETEP TERPASANG DI SINI YA, ZI!
+SUPABASE_URL = "https://masukin-project-id-lo.supabase.co"
+SUPABASE_KEY = "masukin-anon-key-atau-service-role-key-supabase-lo"
 SUPABASE_TABLE = "dapot_data"
 
 # --- Fungsi Standarisasi Format Site ID ---
@@ -55,7 +55,6 @@ def konversi_link_gdrive(url_tunggal):
         direct_download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
         return thumb_url, zoom_url, direct_download_url
         
-    # FIX: Dibuat polos tanpa walrus operator
     return link_bersih, link_bersih, link_bersih
 
 # --- FUNGSI PULL DATA DARI APPSHEET API ---
@@ -139,7 +138,7 @@ else:
     mapping_fuzzy = {}
     for site_a in df_app['site_clean_app'].unique():
         if site_a in list_site_sup:
-            mapping_fuzzy[site_a] = site_a # Match exact
+            mapping_fuzzy[site_a] = site_a
         else:
             match_terdekat = cari_site_terdekat(site_a, list_site_sup)
             if match_terdekat:
@@ -150,14 +149,15 @@ else:
     # 4. Merge Dataframe AppSheet dengan Supabase dapot_data
     df_merged = pd.merge(df_app, df_sup, left_on='matched_site_sup', right_on='site_clean_sup', how='left', suffixes=('', '_dapot'))
 
-    # 5. Bikin Format Naming Dropdown: site_id | site_name | site_class | grid_category_new | hub_site
+    # 5. FIX VISUAL: Mengubah struktur nama di dropdown agar Site ID ter-highlight mencolok
     def susun_nama_dropdown(row):
         s_id = row['matched_site_sup'] if pd.notna(row['matched_site_sup']) else row['site_clean_app']
         s_name = row.get('site_name', 'UNKNOWN NAME')
         s_class = row.get('site_class', '-')
         s_grid = row.get('grid_category_new', '-')
         s_hub = row.get('hub_site', '-')
-        return f"{s_id} | {s_name} | {s_class} | {s_grid} | {s_hub}"
+        # Site ID dikasih kurung siku tebal & panah penunjuk, sisanya dikurung rapi
+        return f"[{s_id}] ➔ {s_name} ({s_class} • {s_grid} • {s_hub})"
         
     df_merged['dropdown_label'] = df_merged.apply(susun_nama_dropdown, axis=1)
 
@@ -166,7 +166,7 @@ else:
     st.divider()
 
     # --- DROPDOWN SITE ID DENGAN FORMAT BARU ---
-    label_pilihan = st.selectbox("🎯 Pilih Site (Format: ID | Name | Class | Grid | Hub):", sorted(df_merged['dropdown_label'].unique()))
+    label_pilihan = st.selectbox("🎯 Pilih Site ID:", sorted(df_merged['dropdown_label'].unique()))
 
     # Filter data baris berdasarkan label yang dipilih user
     data_site = df_merged[df_merged['dropdown_label'] == label_pilihan].iloc[0]
@@ -240,7 +240,6 @@ else:
                 st.warning("Isi kolom rekomendasi terlebih dahulu sebelum disimpan, Zi.")
             else:
                 with st.spinner("Sedang menyimpan data..."):
-                    # Ambil ID Asli bawaan baris AppSheet untuk dikirim balik sebagai key data
                     site_id_asli_appsheet = data_site[kolom_site_app]
                     sukses = update_rekomendasi_appsheet(site_id_asli_appsheet, kolom_site_app, rekomendasi_input)
                     if sukses:
