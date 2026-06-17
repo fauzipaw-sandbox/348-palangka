@@ -6,14 +6,14 @@ import re
 # Konfigurasi halaman
 st.set_page_config(layout="wide", page_title="Task Force Dashboard NOP")
 
-# --- HELPER FUNCTION: Konversi Link GDrive (VERSI REVISI) ---
+# --- HELPER FUNCTION: Konversi Link GDrive ---
 def konversi_link_gdrive(url_mentah):
     if pd.isna(url_mentah) or not url_mentah or str(url_mentah).strip() == "":
         return None
         
     url_str = str(url_mentah)
     
-    # FIX: Regex ini sekarang mengabaikan tanda kutip (") dan kurung kurawal (}) dari JSON AppSheet
+    # Mengabaikan tanda kutip (") dan kurung kurawal ({}) dari format JSON AppSheet
     match = re.search(r'(https?://[^\s,"\'\}]+)', url_str)
     if not match:
         return None
@@ -63,7 +63,7 @@ def load_data_from_appsheet():
 df = load_data_from_appsheet()
 
 if df.empty:
-    st.warning("Data kosong atau belum terhubung dengan bener ke AppSheet.")
+    st.warning("Data kosong atau belum terhubung dengan bener ke AppSheet. Pastikan TABLE_NAME sudah sesuai, Zi.")
 else:
     # --- HEADER DASHBOARD ---
     st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 347 | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
@@ -72,12 +72,24 @@ else:
     # --- FILTER SIDEBAR & CONTROLLER ---
     st.sidebar.header("⚙️ Dashboard Controller")
     
-    # AUTO-DETECT KOLOM SITE: Nyari kolom yang ada kata 'site' atau 'id', kalau gak ada pakai kolom pertama
-    possible_site_cols = [c for c in df.columns if "site" in c.lower() or "id" in c.lower()]
-    kolom_site = possible_site_cols[0] if possible_site_cols else df.columns[0]
+    # FIX LOGIKA DETEKSI: Cari yang beneran mengandung kata 'site' utuh agar tidak terjebak kata 'kondisi'
+    possible_site_cols = [c for c in df.columns if "site" in c.lower()]
     
+    # Kalau kolom dengan kata 'site' ga ketemu, cari yang namanya pas 'id' atau pakai kolom pertama
+    if possible_site_cols:
+        kolom_site = possible_site_cols[0]
+    else:
+        backup_cols = [c for c in df.columns if c.lower() == 'id' or c.lower() == 'site id']
+        kolom_site = backup_cols[0] if backup_cols else df.columns[0]
+    
+    # Dropdown Site ID asli
     site_pilihan = st.sidebar.selectbox("Pilih Site ID:", df[kolom_site].unique())
     show_photos = st.sidebar.checkbox("Tampilkan Foto Dokumentasi", value=True)
+
+    # MENU DEBUG: Buat mastiin nama kolom yang ketarik dari AppSheet lo
+    with st.sidebar.expander("🔍 Debug: List Kolom AppSheet"):
+        st.write("Kolom yang dijadikan acuan Site:", kolom_site)
+        st.write(df.columns.tolist())
 
     # Filter data berdasarkan site yang dipilih
     data_site = df[df[kolom_site] == site_pilihan].iloc[0]
@@ -133,7 +145,7 @@ else:
         
         st.markdown("---")
         
-        # SAKLAR FOTO SCREENSHOT (Menggunakan width='stretch' sesuai standar baru Streamlit)
+        # SAKLAR FOTO SCREENSHOT
         if show_photos:
             st.markdown("**📸 Foto Dokumentasi Lapangan (GDrive)**")
             f_col1, f_col2 = st.columns(2)
