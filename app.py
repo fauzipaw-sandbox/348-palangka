@@ -11,7 +11,7 @@ APP_ID = "d3525213-95f5-4dff-9eb3-62842c4964f0"
 ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
 TABLE_NAME = "List"
 
-# --- FUNGSI STANDARISASI SITE ID ---
+# --- Fungsi Standarisasi Format Site ID ---
 def format_site_id(site_id):
     if pd.isna(site_id) or str(site_id).strip() == "":
         return "-"
@@ -19,7 +19,7 @@ def format_site_id(site_id):
     s = re.sub(r'^K+P', 'KKP', s)
     return s
 
-# --- FUNGSI KONVERSI LINK GDRIVE KE THUMBNAIL (BYPASS BLOCK) ---
+# --- Fungsi Ekstraksi ID GDrive & Konversi ke Endpoint Thumbnail ---
 def konversi_link_gdrive(url_mentah):
     if pd.isna(url_mentah) or not url_mentah or str(url_mentah).strip() == "":
         return None, None
@@ -36,8 +36,8 @@ def konversi_link_gdrive(url_mentah):
         id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_bersih)
         if id_match:
             file_id = id_match.group(1)
-    elif "drive.google.com/file/d/" in link_bersih:
-        id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_bersih)
+    elif "drive.google.com/file/d/" in link_inter := link_bersih:
+        id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_inter)
         if id_match:
             file_id = id_match.group(1)
             
@@ -99,10 +99,9 @@ if df.empty:
     st.warning("Data kosong atau belum terhubung dengan bener ke AppSheet.")
 else:
     kolom_site = 'Site' if 'Site' in df.columns else ([c for c in df.columns if "site" in c.lower() or "id" in c.lower()] + [df.columns[0]])[0]
-    
     df[kolom_site] = df[kolom_site].apply(format_site_id)
 
-    # --- HEADER DASHBOARD ---
+    # --- REQ 1: HEADER DASHBOARD TASK FORCE 348 ---
     st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 348 | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
     st.divider()
 
@@ -187,9 +186,23 @@ else:
                     else:
                         st.error("Gagal menyimpan data ke AppSheet.")
 
-        # --- GALLERY FOTO BERJEJER (HTML Rapat tanpa spasi awal biar ga jadi Code Block) ---
+        # --- REQ 1 & 2 & 3: ADVANCED GALLERY HORIZONTAL SCROLL + CHECKBOX HACK + POPUP LIGHTBOX ---
         st.markdown("---")
-        st.markdown("**📸 Foto Dokumentasi Lapangan (Horizontal Scroll & Click to Zoom)**")
+        st.markdown("**📸 Foto Dokumentasi Lapangan (Horizontal Scroll & Click to Pop-up)**")
+        
+        # Inject Custom CSS styles secara rapat untuk memicu fungsionalitas popup & exclude X
+        st.markdown("""<style>
+        .gallery-container { display: flex; overflow-x: auto; padding: 15px; background-color: #151515; border-radius: 10px; border: 1px solid #333; margin-top: 5px; scroll-behavior: smooth; }
+        .photo-card { flex: 0 0 auto; width: 140px; margin-right: 15px; text-align: center; position: relative; }
+        .hide-checkbox { display: none; }
+        .hide-checkbox:checked + .photo-card { display: none; }
+        .exclude-btn { position: absolute; top: 2px; right: 12px; background: rgba(211, 47, 47, 0.9); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 11px; line-height: 18px; cursor: pointer; font-weight: bold; z-index: 10; box-shadow: 0px 2px 4px rgba(0,0,0,0.5); }
+        .exclude-btn:hover { background: #b71c1c; }
+        .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.95); z-index: 99999; justify-content: center; align-items: center; }
+        .lightbox:target { display: flex; }
+        .lightbox img { max-width: 85%; max-height: 85%; border-radius: 6px; box-shadow: 0px 0px 25px rgba(255,255,255,0.2); }
+        .lightbox .close-lightbox { position: absolute; top: 30px; right: 40px; color: #fff; font-size: 45px; text-decoration: none; font-weight: bold; }
+        </style>""", unsafe_allow_html=True)
         
         list_fotos = [
             ('KWH Meter', "KWH Meter"),
@@ -200,33 +213,36 @@ else:
             ('Foto Material (Menggunakan Timestemp)', "Foto Material Timestamp")
         ]
         
-        labels_aktif = [lbl for _, lbl in list_fotos]
-        foto_disembunyikan = st.multiselect("🚫 Sembunyikan foto sementara (untuk kebutuhan screenshot):", labels_aktif)
-        
         html_items = []
         for col_name, label in list_fotos:
-            if label in foto_disembunyikan:
-                continue
-                
             url_mentah = data_site.get(col_name)
             thumb_url, zoom_url = konversi_link_gdrive(url_mentah)
             
             if thumb_url:
-                # DIBUAT RAPAT TANPA INDENTASI BIAR STREAMLIT GA MENGIRA INI CODE BLOCK
-                item_html = f"""<div style="flex: 0 0 auto; width: 140px; margin-right: 15px; text-align: center;">
-<a href="{zoom_url}" target="_blank" title="Klik untuk Zoom Resolusi Penuh">
-<img src="{thumb_url}" style="width: 130px; height: 130px; object-fit: cover; border-radius: 8px; box-shadow: 0px 4px 8px rgba(0,0,0,0.4); border: 2px solid #444; cursor: pointer; transition: transform 0.2s;"/>
+                # Membuat ID Alfanumerik unik untuk target popup & checkbox masing-masing kolom
+                safe_id = re.sub(r'[^a-zA-Z0-9]', '', col_name)
+                
+                # HTML Rapat Tanpa Indentasi Spasi agar tidak dibaca sebagai Markdown Code Block
+                item_html = f"""<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox">
+<div class="photo-card">
+<label for="hide-{safe_id}" class="exclude-btn" title="Sembunyikan Foto">&times;</label>
+<a href="#lightbox-{safe_id}" title="Klik untuk Pop-up Zoom">
+<img src="{thumb_url}" style="width: 130px; height: 130px; object-fit: cover; border-radius: 8px; box-shadow: 0px 4px 8px rgba(0,0,0,0.4); border: 2px solid #444; cursor: pointer;"/>
 </a>
 <div style="font-size: 11px; margin-top: 6px; color: #e0e0e0; white-space: normal; line-height: 1.2;">{label}</div>
+</div>
+<div id="lightbox-{safe_id}" class="lightbox">
+<a href="#" class="close-lightbox">&times;</a>
+<img src="{zoom_url}">
 </div>"""
                 html_items.append(item_html)
                     
         if html_items:
             semua_item = "".join(html_items)
-            gallery_html = f"""<div style="display: flex; overflow-x: auto; padding: 15px; background-color: #151515; border-radius: 10px; border: 1px solid #333; margin-top: 5px; scroll-behavior: smooth;">
+            gallery_html = f"""<div class="gallery-container">
 {semua_item}
 </div>"""
             st.markdown(gallery_html, unsafe_allow_html=True)
-            st.caption("💡 *Tips: Geser/Scroll ke kanan untuk melihat foto lain. Klik langsung pada gambar untuk memperbesar (zoom) di tab baru.*")
+            st.caption("💡 *Tips: Scroll ke kanan untuk melihat foto lain. Klik tombol bulat 'X' merah di atas foto untuk menyembunyikan. Klik gambar untuk membuka Pop-up Zoom.*")
         else:
-            st.info("Tidak ada dokumentasi foto yang ditampilkan.")
+            st.info("Tidak ada dokumentasi foto yang ditemukan untuk site ini.")
