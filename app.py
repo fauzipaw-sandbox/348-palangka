@@ -36,8 +36,9 @@ def konversi_link_gdrive(url_mentah):
         id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_bersih)
         if id_match:
             file_id = id_match.group(1)
-    elif "drive.google.com/file/d/" in link_inter := link_bersih:
-        id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_inter)
+    # FIX SYNTAX ERROR: Dibuat normal tanpa walrus operator (:=)
+    elif "drive.google.com/file/d/" in link_bersih:
+        id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_bersih)
         if id_match:
             file_id = id_match.group(1)
             
@@ -186,11 +187,11 @@ else:
                     else:
                         st.error("Gagal menyimpan data ke AppSheet.")
 
-        # --- REQ 1 & 2 & 3: ADVANCED GALLERY HORIZONTAL SCROLL + CHECKBOX HACK + POPUP LIGHTBOX ---
+        # --- ADVANCED GALLERY HORIZONTAL SCROLL + CHECKBOX HACK + POPUP LIGHTBOX ---
         st.markdown("---")
         st.markdown("**📸 Foto Dokumentasi Lapangan (Horizontal Scroll & Click to Pop-up)**")
         
-        # Inject Custom CSS styles secara rapat untuk memicu fungsionalitas popup & exclude X
+        # Inject Custom CSS styles secara rapat
         st.markdown("""<style>
         .gallery-container { display: flex; overflow-x: auto; padding: 15px; background-color: #151515; border-radius: 10px; border: 1px solid #333; margin-top: 5px; scroll-behavior: smooth; }
         .photo-card { flex: 0 0 auto; width: 140px; margin-right: 15px; text-align: center; position: relative; }
@@ -219,10 +220,8 @@ else:
             thumb_url, zoom_url = konversi_link_gdrive(url_mentah)
             
             if thumb_url:
-                # Membuat ID Alfanumerik unik untuk target popup & checkbox masing-masing kolom
                 safe_id = re.sub(r'[^a-zA-Z0-9]', '', col_name)
                 
-                # HTML Rapat Tanpa Indentasi Spasi agar tidak dibaca sebagai Markdown Code Block
                 item_html = f"""<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox">
 <div class="photo-card">
 <label for="hide-{safe_id}" class="exclude-btn" title="Sembunyikan Foto">&times;</label>
