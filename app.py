@@ -105,7 +105,8 @@ else:
 
     data_site = df[df[kolom_site] == site_pilihan].iloc[0]
 
-    st.write(f"<p style='text-align: center;'><b>Timestamp Data:</b> {data_site.get('Timestamp',指標='-')}</p>", unsafe_allow_html=True)
+    # FIX TYPO DI SINI:
+    st.write(f"<p style='text-align: center;'><b>Timestamp Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
     st.divider()
 
     # --- LAYOUTING UTAMA ---
@@ -181,7 +182,7 @@ else:
                     else:
                         st.error("Gagal menyimpan data ke AppSheet.")
 
-        # --- REQ 3: DYNAMIC GALLERY SCANNER (SCAN SEMUA KOLOM + MULTIPLE PHOTOS PER CELL) ---
+        # --- DYNAMIC GALLERY SCANNER (SCAN SEMUA KOLOM + MULTIPLE PHOTOS PER CELL) ---
         st.markdown("---")
         st.markdown("**📸 Foto Dokumentasi Lapangan (Horizontal Scroll & Click to Pop-up)**")
         
@@ -199,20 +200,17 @@ else:
         .lightbox .close-lightbox { position: absolute; top: 30px; right: 40px; color: #fff; font-size: 45px; text-decoration: none; font-weight: bold; }
         </style>""", unsafe_allow_html=True)
         
-        # Langkah 1: Scan secara dinamis ALL COLUMNS mencari tautan foto Drive
         all_detected_photos = []
         for col_name in df.columns:
             val = data_site.get(col_name)
             if pd.isna(val) or not val:
                 continue
                 
-            # Deteksi semua URL yang ada di dalam cell (bisa lebih dari 1 foto jika dipisah koma)
             urls = re.findall(r'(https?://[^\s,"\'\}]+)', str(val))
             
             for idx, url in enumerate(urls):
                 thumb_url, zoom_url = konversi_link_gdrive(url)
                 if thumb_url:
-                    # Jika di 1 kolom ada lebih dari 1 foto, beri nomor (#1, #2)
                     label = f"{col_name} #{idx+1}" if len(urls) > 1 else col_name
                     all_detected_photos.append({
                         'label': label,
@@ -222,11 +220,9 @@ else:
                         'zoom_url': zoom_url
                     })
         
-        # Langkah 2: Buat Sortir Manual lewat Multiselect tersembunyi
         labels_aktif = [p['label'] for p in all_detected_photos]
         foto_disembunyikan = st.multiselect("🚫 Sembunyikan foto dari view sementara (untuk kebutuhan screenshot):", labels_aktif)
         
-        # Langkah 3: Render HTML Galeri
         html_items = []
         for p in all_detected_photos:
             if p['label'] in foto_disembunyikan:
