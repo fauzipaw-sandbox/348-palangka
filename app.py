@@ -17,11 +17,20 @@ SUPABASE_URL = "https://masukin-project-id-lo.supabase.co"
 SUPABASE_KEY = "masukin-anon-key-atau-service-role-key-supabase-lo"
 SUPABASE_TABLE = "dapot_data"
 
-# --- Fungsi Standarisasi Format Site ID ---
+# --- Fungsi Standarisasi Format Site ID (UPDATE: EKSTRAKSI 3 HURUF + 3 ANGKA) ---
 def format_site_id(site_id):
     if pd.isna(site_id) or str(site_id).strip() == "":
         return "-"
+    # Bersihkan spasi dan karakter pemisah
     s = str(site_id).strip().upper().replace(" ", "").replace("-", "").replace("_", "")
+    
+    # Deteksi dan ekstrak pola murni 3 Huruf + 3 Angka (contoh: KKP326, TML005)
+    # Ini akan memotong awalan/akhiran gak penting kayak 'TTML005BAMBULUNG' jadi 'TML005'
+    match = re.search(r'[A-Z]{3}\d{3}', s)
+    if match:
+        return match.group(0)
+        
+    # Fallback kalau formatnya gak sesuai pola di atas
     s = re.sub(r'^K+P', 'KKP', s)
     return s
 
@@ -129,7 +138,7 @@ else:
     # 1. Deteksi kolom acuan site di AppSheet
     kolom_site_app = 'Site' if 'Site' in df_app.columns else ([c for c in df_app.columns if "site" in c.lower() or "id" in c.lower()] + [df_app.columns[0]])[0]
     
-    # 2. Standarisasi karakter id site untuk proses matching
+    # 2. Standarisasi & Ekstraksi karakter id site untuk proses matching
     df_app['site_clean_app'] = df_app[kolom_site_app].apply(format_site_id)
     df_sup['site_clean_sup'] = df_sup['site_id'].apply(format_site_id)
     
@@ -149,14 +158,14 @@ else:
     # 4. Merge Dataframe AppSheet dengan Supabase dapot_data
     df_merged = pd.merge(df_app, df_sup, left_on='matched_site_sup', right_on='site_clean_sup', how='left', suffixes=('', '_dapot'))
 
-    # 5. FIX VISUAL: Mengubah struktur nama di dropdown agar Site ID ter-highlight mencolok
+    # 5. FIX VISUAL: Mengubah struktur nama di dropdown (Highlight & Bersihin "nan")
     def susun_nama_dropdown(row):
         s_id = row['matched_site_sup'] if pd.notna(row['matched_site_sup']) else row['site_clean_app']
-        s_name = row.get('site_name', 'UNKNOWN NAME')
-        s_class = row.get('site_class', '-')
-        s_grid = row.get('grid_category_new', '-')
-        s_hub = row.get('hub_site', '-')
-        # Site ID dikasih kurung siku tebal & panah penunjuk, sisanya dikurung rapi
+        s_name = row['site_name'] if pd.notna(row.get('site_name')) else 'UNKNOWN NAME'
+        s_class = row['site_class'] if pd.notna(row.get('site_class')) else '-'
+        s_grid = row['grid_category_new'] if pd.notna(row.get('grid_category_new')) else '-'
+        s_hub = row['hub_site'] if pd.notna(row.get('hub_site')) else '-'
+        
         return f"[{s_id}] ➔ {s_name} ({s_class} • {s_grid} • {s_hub})"
         
     df_merged['dropdown_label'] = df_merged.apply(susun_nama_dropdown, axis=1)
@@ -184,11 +193,11 @@ else:
         info_dasar = {
             "Parameter": ["Site ID (Dapot)", "Site Name", "Site Class", "Grid Category", "Hub Site", "Phase PLN", "Grounding KWH"],
             "Value": [
-                data_site.get('site_id', '-'),
-                data_site.get('site_name', '-'),
-                data_site.get('site_class', '-'),
-                data_site.get('grid_category_new', '-'),
-                data_site.get('hub_site', '-'),
+                data_site['site_id'] if pd.notna(data_site.get('site_id')) else '-',
+                data_site['site_name'] if pd.notna(data_site.get('site_name')) else '-',
+                data_site['site_class'] if pd.notna(data_site.get('site_class')) else '-',
+                data_site['grid_category_new'] if pd.notna(data_site.get('grid_category_new')) else '-',
+                data_site['hub_site'] if pd.notna(data_site.get('hub_site')) else '-',
                 data_site.get('Phase PLN', '-'),
                 data_site.get('Grounding KWH', '-')
             ]
