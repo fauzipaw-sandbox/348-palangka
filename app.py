@@ -20,23 +20,17 @@ def format_site_id(site_id):
     return s
 
 # --- Fungsi Ekstraksi ID GDrive & Konversi ke Endpoint Thumbnail ---
-def konversi_link_gdrive(url_mentah):
-    if pd.isna(url_mentah) or not url_mentah or str(url_mentah).strip() == "":
+def konversi_link_gdrive(url_tunggal):
+    if not url_tunggal or str(url_tunggal).strip() == "":
         return None, None
         
-    url_str = str(url_mentah)
-    match = re.search(r'(https?://[^\s,"\'\}]+)', url_str)
-    if not match:
-        return None, None
-        
-    link_bersih = match.group(1).strip()
-    
+    link_bersih = str(url_tunggal).strip()
     file_id = None
+    
     if "id=" in link_bersih:
         id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_bersih)
         if id_match:
             file_id = id_match.group(1)
-    # FIX SYNTAX ERROR: Dibuat normal tanpa walrus operator (:=)
     elif "drive.google.com/file/d/" in link_bersih:
         id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_bersih)
         if id_match:
@@ -111,7 +105,7 @@ else:
 
     data_site = df[df[kolom_site] == site_pilihan].iloc[0]
 
-    st.write(f"<p style='text-align: center;'><b>Timestamp Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
+    st.write(f"<p style='text-align: center;'><b>Timestamp Data:</b> {data_site.get('Timestamp',指標='-')}</p>", unsafe_allow_html=True)
     st.divider()
 
     # --- LAYOUTING UTAMA ---
@@ -187,11 +181,11 @@ else:
                     else:
                         st.error("Gagal menyimpan data ke AppSheet.")
 
-        # --- ADVANCED GALLERY HORIZONTAL SCROLL + CHECKBOX HACK + POPUP LIGHTBOX ---
+        # --- REQ 3: DYNAMIC GALLERY SCANNER (SCAN SEMUA KOLOM + MULTIPLE PHOTOS PER CELL) ---
         st.markdown("---")
         st.markdown("**📸 Foto Dokumentasi Lapangan (Horizontal Scroll & Click to Pop-up)**")
         
-        # Inject Custom CSS styles secara rapat
+        # Inject Custom CSS styles
         st.markdown("""<style>
         .gallery-container { display: flex; overflow-x: auto; padding: 15px; background-color: #151515; border-radius: 10px; border: 1px solid #333; margin-top: 5px; scroll-behavior: smooth; }
         .photo-card { flex: 0 0 auto; width: 140px; margin-right: 15px; text-align: center; position: relative; }
@@ -205,36 +199,54 @@ else:
         .lightbox .close-lightbox { position: absolute; top: 30px; right: 40px; color: #fff; font-size: 45px; text-decoration: none; font-weight: bold; }
         </style>""", unsafe_allow_html=True)
         
-        list_fotos = [
-            ('KWH Meter', "KWH Meter"),
-            ('Foto Rectifier', "Foto Rectifier"),
-            ('MCB PLN', "MCB PLN"),
-            ('Foto Modul', "Foto Modul"),
-            ('Battery (Total Pack)', "Battery Total Pack"),
-            ('Foto Material (Menggunakan Timestemp)', "Foto Material Timestamp")
-        ]
-        
-        html_items = []
-        for col_name, label in list_fotos:
-            url_mentah = data_site.get(col_name)
-            thumb_url, zoom_url = konversi_link_gdrive(url_mentah)
-            
-            if thumb_url:
-                safe_id = re.sub(r'[^a-zA-Z0-9]', '', col_name)
+        # Langkah 1: Scan secara dinamis ALL COLUMNS mencari tautan foto Drive
+        all_detected_photos = []
+        for col_name in df.columns:
+            val = data_site.get(col_name)
+            if pd.isna(val) or not val:
+                continue
                 
-                item_html = f"""<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox">
+            # Deteksi semua URL yang ada di dalam cell (bisa lebih dari 1 foto jika dipisah koma)
+            urls = re.findall(r'(https?://[^\s,"\'\}]+)', str(val))
+            
+            for idx, url in enumerate(urls):
+                thumb_url, zoom_url = konversi_link_gdrive(url)
+                if thumb_url:
+                    # Jika di 1 kolom ada lebih dari 1 foto, beri nomor (#1, #2)
+                    label = f"{col_name} #{idx+1}" if len(urls) > 1 else col_name
+                    all_detected_photos.append({
+                        'label': label,
+                        'col_name': col_name,
+                        'idx': idx,
+                        'thumb_url': thumb_url,
+                        'zoom_url': zoom_url
+                    })
+        
+        # Langkah 2: Buat Sortir Manual lewat Multiselect tersembunyi
+        labels_aktif = [p['label'] for p in all_detected_photos]
+        foto_disembunyikan = st.multiselect("🚫 Sembunyikan foto dari view sementara (untuk kebutuhan screenshot):", labels_aktif)
+        
+        # Langkah 3: Render HTML Galeri
+        html_items = []
+        for p in all_detected_photos:
+            if p['label'] in foto_disembunyikan:
+                continue
+                
+            safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{p['col_name']}{p['idx']}")
+            
+            item_html = f"""<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox">
 <div class="photo-card">
 <label for="hide-{safe_id}" class="exclude-btn" title="Sembunyikan Foto">&times;</label>
 <a href="#lightbox-{safe_id}" title="Klik untuk Pop-up Zoom">
-<img src="{thumb_url}" style="width: 130px; height: 130px; object-fit: cover; border-radius: 8px; box-shadow: 0px 4px 8px rgba(0,0,0,0.4); border: 2px solid #444; cursor: pointer;"/>
+<img src="{p['thumb_url']}" style="width: 130px; height: 130px; object-fit: cover; border-radius: 8px; box-shadow: 0px 4px 8px rgba(0,0,0,0.4); border: 2px solid #444; cursor: pointer;"/>
 </a>
-<div style="font-size: 11px; margin-top: 6px; color: #e0e0e0; white-space: normal; line-height: 1.2;">{label}</div>
+<div style="font-size: 11px; margin-top: 6px; color: #e0e0e0; white-space: normal; line-height: 1.2;">{p['label']}</div>
 </div>
 <div id="lightbox-{safe_id}" class="lightbox">
 <a href="#" class="close-lightbox">&times;</a>
-<img src="{zoom_url}">
+<img src="{p['zoom_url']}">
 </div>"""
-                html_items.append(item_html)
+            html_items.append(item_html)
                     
         if html_items:
             semua_item = "".join(html_items)
@@ -242,6 +254,6 @@ else:
 {semua_item}
 </div>"""
             st.markdown(gallery_html, unsafe_allow_html=True)
-            st.caption("💡 *Tips: Scroll ke kanan untuk melihat foto lain. Klik tombol bulat 'X' merah di atas foto untuk menyembunyikan. Klik gambar untuk membuka Pop-up Zoom.*")
+            st.caption("💡 *Tips: Scroll ke kanan untuk melihat semua foto. Klik tombol bulat 'X' merah di atas foto untuk menyembunyikan. Klik gambar untuk Pop-up Zoom.*")
         else:
             st.info("Tidak ada dokumentasi foto yang ditemukan untuk site ini.")
