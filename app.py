@@ -13,8 +13,8 @@ ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
 TABLE_NAME = "List"
 
 # ⚠️ ISI KREDENSIAL SUPABASE LO DI SINI, ZI!
-SUPABASE_URL = "https://masukin-project-id-lo.supabase.co"
-SUPABASE_KEY = "masukin-anon-key-atau-service-role-key-supabase-lo"
+SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
+SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
 SUPABASE_TABLE = "dapot_data"
 
 # --- Fungsi Standarisasi Format Site ID ---
