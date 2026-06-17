@@ -53,8 +53,8 @@ def load_data_from_appsheet():
 df = load_data_from_appsheet()
 
 # --- HEADER WEB DASHBOARD ---
-st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 347 | KKP226 | NOP PALANGKARAYA</h2>", unsafe_allow_type=True)
-st.write(f"<p style='text-align: center;'>Data Update Terakhir: {df['Timestamp'].iloc[0]}</p>", unsafe_allow_type=True)
+st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 347 | KKP226 | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
+st.write(f"<p style='text-align: center;'>Data Update Terakhir: {df['Timestamp'].iloc[0]}</p>", unsafe_allow_html=True)
 
 st.divider()
 
@@ -73,7 +73,7 @@ col_basic, col_finding = st.columns([1, 1.2])
 
 # ================= KOLOM KIRI: BASIC INFORMATION =================
 with col_basic:
-    st.markdown("<h3 style='background-color: #1e3d59; color: white; padding: 8px; border-radius: 5px;'>Basic Information</h3>", unsafe_allow_type=True)
+    st.markdown("<h3 style='background-color: #1e3d59; color: white; padding: 8px; border-radius: 5px;'>Basic Information</h3>", unsafe_allow_html=True)
     
     # Bikin tabel data infomasi dasar
     info_dasar = {
@@ -82,7 +82,7 @@ with col_basic:
     }
     st.table(pd.DataFrame(info_dasar))
     
-    st.markdown("<h4 style='color: #1e3d59;'>Kondisi Kelistrikan & Power</h4>", unsafe_allow_type=True)
+    st.markdown("<h4 style='color: #1e3d59;'>Kondisi Kelistrikan & Power</h4>", unsafe_allow_html=True)
     col_v, col_i = st.columns(2)
     with col_v:
         st.metric(label="Tegangan R-N", value=f"{data_site['Teg_RN']} V")
@@ -96,7 +96,7 @@ with col_basic:
 
 # ================= KOLOM KANAN: FINDING & FOTO =================
 with col_finding:
-    st.markdown("<h3 style='background-color: #ffc13b; color: #1e3d59; padding: 8px; border-radius: 5px;'>Findings & Hardware Status</h3>", unsafe_allow_type=True)
+    st.markdown("<h3 style='background-color: #ffc13b; color: #1e3d59; padding: 8px; border-radius: 5px;'>Findings & Hardware Status</h3>", unsafe_allow_html=True)
     
     st.write(f"**Tipe Rectifier:** {data_site['Type_Rectifier']}")
     st.write(f"**Total Arus Rectifier:** {data_site['Rectifier_Current']} A")
