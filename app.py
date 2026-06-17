@@ -19,7 +19,7 @@ def format_site_id(site_id):
     s = re.sub(r'^K+P', 'KKP', s)
     return s
 
-# --- Fungsi Ekstraksi ID GDrive & Konversi ke Endpoint Thumbnail ---
+# --- Fungsi Ekstraksi ID GDrive (Untuk Foto & File) ---
 def konversi_link_gdrive(url_tunggal):
     if not url_tunggal or str(url_tunggal).strip() == "":
         return None, None
@@ -39,9 +39,10 @@ def konversi_link_gdrive(url_tunggal):
     if file_id:
         thumb_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w400"
         zoom_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w1600"
-        return thumb_url, zoom_url
+        direct_download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        return thumb_url, zoom_url, direct_download_url
         
-    return link_bersih, link_bersih
+    return link_bersih, link_bersih, link_bersih
 
 # --- FUNGSI PULL DATA DARI APPSHEET API ---
 @st.cache_data(ttl=300)
@@ -96,7 +97,7 @@ else:
     kolom_site = 'Site' if 'Site' in df.columns else ([c for c in df.columns if "site" in c.lower() or "id" in c.lower()] + [df.columns[0]])[0]
     df[kolom_site] = df[kolom_site].apply(format_site_id)
 
-    # --- REQ 1: HEADER DASHBOARD TASK FORCE 348 ---
+    # --- HEADER DASHBOARD ---
     st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 348 | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
     st.divider()
 
@@ -105,7 +106,6 @@ else:
 
     data_site = df[df[kolom_site] == site_pilihan].iloc[0]
 
-    # --- REQ 2: LABELLING BERUBAH JADI 'Last Data:' ---
     st.write(f"<p style='text-align: center;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
     st.divider()
 
@@ -182,11 +182,10 @@ else:
                     else:
                         st.error("Gagal menyimpan data ke AppSheet.")
 
-        # --- REQ 1 & 3: DEDUPLICATED GALLERY HORIZONTAL SCROLL + POPUP LIGHTBOX ---
+        # --- DYNAMIC SCANNER: MEMISAHKAN FOTO & FILE CSV DISINI ---
         st.markdown("---")
-        st.markdown("**📸 Foto Dokumentasi Lapangan (Horizontal Scroll & Click to Pop-up)**")
         
-        # Inject Custom CSS styles secara rapat
+        # CSS Global untuk galeri foto
         st.markdown("""<style>
         .gallery-container { display: flex; overflow-x: auto; padding: 15px; background-color: #151515; border-radius: 10px; border: 1px solid #333; margin-top: 5px; scroll-behavior: smooth; }
         .photo-card { flex: 0 0 auto; width: 140px; margin-right: 15px; text-align: center; position: relative; }
@@ -201,7 +200,8 @@ else:
         </style>""", unsafe_allow_html=True)
         
         all_detected_photos = []
-        seen_urls = set() # --- REQ 3: Set untuk melacak URL foto agar tidak duplikat ---
+        all_detected_csvs = []
+        seen_urls = set()
         
         for col_name in df.columns:
             val = data_site.get(col_name)
@@ -211,22 +211,36 @@ else:
             urls = re.findall(r'(https?://[^\s,"\'\}]+)', str(val))
             
             for idx, url in enumerate(urls):
-                thumb_url, zoom_url = konversi_link_gdrive(url)
-                if thumb_url:
-                    # Jika URL foto sudah pernah diproses sebelumnya, skip (buang duplikat)
-                    if url in seen_urls:
-                        continue
-                    seen_urls.add(url)
-                    
-                    label = f"{col_name} #{idx+1}" if len(urls) > 1 else col_name
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                
+                # Cek dari nama kolom atau isi URL apakah ini file data/CSV
+                is_csv = "csv" in col_name.lower() or ".csv" in url.lower() or "data" in col_name.lower()
+                
+                thumb_url, zoom_url, download_url = konversi_link_gdrive(url)
+                label = f"{col_name} #{idx+1}" if len(urls) > 1 else col_name
+                
+                if thumb_url and not is_csv:
+                    # Masuk list Foto
                     all_detected_photos.append({
-                        'label': label,
-                        'col_name': col_name,
-                        'idx': idx,
-                        'thumb_url': thumb_url,
-                        'zoom_url': zoom_url
+                        'label': label, 'col_name': col_name, 'idx': idx, 'thumb_url': thumb_url, 'zoom_url': zoom_url
                     })
-        
+                elif is_csv:
+                    # Masuk list CSV
+                    all_detected_csvs.append({
+                        'label': label, 'download_url': download_url
+                    })
+
+        # --- SEKSI A: TAMPILKAN FILE CSV UNTUK DOWNLOAD ---
+        if all_detected_csvs:
+            st.markdown("#### 📊 File Data & CSV Uploads")
+            for csv_file in all_detected_csvs:
+                st.link_button(f"📥 Download {csv_file['label']}", csv_file['download_url'], use_container_width=True)
+            st.markdown("---")
+
+        # --- SEKSI B: GALLERY FOTO ---
+        st.markdown("**📸 Foto Dokumentasi Lapangan (Horizontal Scroll & Click to Pop-up)**")
         html_items = []
         for p in all_detected_photos:
             safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{p['col_name']}{p['idx']}")
