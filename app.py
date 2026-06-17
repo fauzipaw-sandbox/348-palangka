@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
-import difflib  # Library bawaan Python untuk mencocokkan karakter yang mendekati
+import difflib
 
 # Konfigurasi halaman agar fullscreen dan rapi
 st.set_page_config(layout="wide", page_title="Task Force Dashboard NOP")
@@ -13,8 +13,8 @@ ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
 TABLE_NAME = "List"
 
 # ⚠️ ISI KREDENSIAL SUPABASE LO DI SINI, ZI!
-SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
-SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
+SUPABASE_URL = "https://masukin-project-id-lo.supabase.co"
+SUPABASE_KEY = "masukin-anon-key-atau-service-role-key-supabase-lo"
 SUPABASE_TABLE = "dapot_data"
 
 # --- Fungsi Standarisasi Format Site ID ---
@@ -29,14 +29,13 @@ def format_site_id(site_id):
 def cari_site_terdekat(site_appsheet, list_site_supabase):
     if site_appsheet == "-":
         return None
-    # Nyari 1 yang paling mendekati dengan akurasi kemiripan minimal 60% (cutoff=0.6)
     cocok = difflib.get_close_matches(site_appsheet, list_site_supabase, n=1, cutoff=0.6)
     return cocok[0] if cocok else None
 
 # --- Fungsi Ekstraksi ID GDrive & Konversi ke Endpoint Thumbnail ---
 def konversi_link_gdrive(url_tunggal):
     if not url_tunggal or str(url_tunggal).strip() == "":
-        return None, None
+        return None, None, None
         
     link_bersih = str(url_tunggal).strip()
     file_id = None
@@ -56,7 +55,8 @@ def konversi_link_gdrive(url_tunggal):
         direct_download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
         return thumb_url, zoom_url, direct_download_url
         
-    return link_inter := link_bersih, link_inter, link_inter
+    # FIX: Dibuat polos tanpa walrus operator
+    return link_bersih, link_bersih, link_bersih
 
 # --- FUNGSI PULL DATA DARI APPSHEET API ---
 @st.cache_data(ttl=300)
@@ -82,7 +82,6 @@ def load_data_from_appsheet():
 # --- FUNGSI PULL DATA DARI SUPABASE REST API ---
 @st.cache_data(ttl=600)
 def load_data_from_supabase():
-    # Menggunakan REST API bawaan Supabase (PostgREST) via requests agar enteng
     url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?select=*"
     headers = {
         "apikey": SUPABASE_KEY,
