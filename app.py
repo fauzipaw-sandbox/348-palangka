@@ -6,7 +6,12 @@ import re
 # Konfigurasi halaman agar fullscreen dan rapi
 st.set_page_config(layout="wide", page_title="Task Force Dashboard NOP")
 
-# --- INITIALIZE SESSION STATE (Untuk simpan daftar foto yang dihapus sementara) ---
+# Kredensial AppSheet API Global
+APP_ID = "d3525213-95f5-4dff-9eb3-62842c4964f0"
+ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
+TABLE_NAME = "List"
+
+# --- INITIALIZE SESSION STATE ---
 if 'foto_dihapus' not in st.session_state:
     st.session_state.foto_dihapus = set()
 
@@ -20,14 +25,14 @@ def konversi_link_gdrive(url_mentah):
     if not match:
         return None
         
-    link_bersih = match.group(1).strip()
+    link_inter = match.group(1).strip()
     
-    if "open?id=" in link_bersih:
-        return link_bersih.replace("open?id=", "uc?export=download&id=")
-    if "Uc?id=" in link_bersih or "uc?id=" in link_bersih:
-        return link_bersih.replace("Uc?id=", "uc?export=download&id=").replace("uc?id=", "uc?export=download&id=")
+    if "open?id=" in link_inter:
+        return link_inter.replace("open?id=", "uc?export=download&id=")
+    if "Uc?id=" in link_inter or "uc?id=" in link_inter:
+        return link_inter.replace("Uc?id=", "uc?export=download&id=").replace("uc?id=", "uc?export=download&id=")
         
-    return link_bersih
+    return link_inter
 
 # --- HELPER 2: Fetch Gambar dari GDrive ---
 @st.cache_data(show_spinner=False, ttl=600)
@@ -43,23 +48,16 @@ def fetch_image_from_gdrive(url):
 # --- FUNGSI PULL DATA DARI APPSHEET API ---
 @st.cache_data(ttl=300)
 def load_data_from_appsheet():
-    APP_ID = "d3525213-95f5-4dff-9eb3-62842c4964f0"
-    ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
-    TABLE_NAME = "List"
-    
     url = f"https://api.appsheet.com/api/v2/apps/{APP_ID}/tables/{TABLE_NAME}/Action"
-    
     headers = {
         'ApplicationAccessKey': ACCESS_KEY,
         'Content-Type': 'application/json'
     }
-    
     payload = {
         "Action": "Find",
         "Properties": {"Locale": "id-ID", "Timezone": "Asia/Jakarta"},
         "Rows": []
     }
-    
     try:
         response = requests.post(url, headers=headers, json=payload)
         if response.status_code == 200:
@@ -67,6 +65,30 @@ def load_data_from_appsheet():
         return pd.DataFrame()
     except:
         return pd.DataFrame()
+
+# --- FUNGSI PUSH/UPDATE DATA KE APPSHEET API ---
+def update_rekomendasi_appsheet(site_id, nama_kolom_site, teks_rekomendasi):
+    url = f"https://api.appsheet.com/api/v2/apps/{APP_ID}/tables/{TABLE_NAME}/Action"
+    headers = {
+        'ApplicationAccessKey': ACCESS_KEY,
+        'Content-Type': 'application/json'
+    }
+    # Payload Edit untuk mengupdate baris data secara spesifik
+    payload = {
+        "Action": "Edit",
+        "Properties": {"Locale": "id-ID", "Timezone": "Asia/Jakarta"},
+        "Rows": [
+            {
+                nama_kolom_site: site_id, # Sebagai Key Row penentu baris
+                "Rekomendasi Koordinator": teks_rekomendasi # Kolom baru yang diupdate
+            }
+        ]
+    }
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        return response.status_code == 200
+    except:
+        return False
 
 # Load data asli
 df = load_data_from_appsheet()
@@ -78,15 +100,14 @@ else:
     st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 347 | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
     st.divider()
 
-    # --- DROPDOWN SITE ID (SEKARANG DI HALAMAN UTAMA, BUKAN DI SIDEBAR) ---
-    # Nyari nama kolom Site lo secara presisi
+    # --- DROPDOWN SITE ID ---
     kolom_site = 'Site' if 'Site' in df.columns else ([c for c in df.columns if "site" in c.lower() or "id" in c.lower()] + [df.columns[0]])[0]
     
     col_select, col_reset = st.columns([3, 1])
     with col_select:
         site_pilihan = st.selectbox("🎯 Pilih Site ID:", df[kolom_site].unique())
     with col_reset:
-        st.write(" ") # Kasih space kosong biar sejajar tombol
+        st.write(" ")
         st.write(" ")
         if st.session_state.foto_dihapus:
             if st.button("🔄 Tampilkan Kembali Semua Foto", use_container_width=True):
@@ -96,7 +117,6 @@ else:
     # Filter data berdasarkan site yang dipilih
     data_site = df[df[kolom_site] == site_pilihan].iloc[0]
 
-    # Tampilkan info di bawah dropdown
     st.write(f"<p style='text-align: center;'><b>Timestamp Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
     st.divider()
 
@@ -132,7 +152,7 @@ else:
             st.metric(label="Beban PLN (S)", value=f"{data_site.get('Beban PLN (S)', '-')} A")
             st.metric(label="Beban PLN (T)", value=f"{data_site.get('Beban PLN (T)', '-')} A")
 
-    # ================= KOLOM KANAN: FINDINGS & STATUS HARDWARE =================
+    # ================= KOLOM KANAN: FINDINGS & INPUT REKOMENDASI =================
     with col_finding:
         st.markdown("<h3 style='background-color: #ffc13b; color: #1e3d59; padding: 8px; border-radius: 5px;'>Findings & Hardware Status</h3>", unsafe_allow_html=True)
         
@@ -147,12 +167,40 @@ else:
         st.write(f"- Kondisi Modul Enva LPU: *{data_site.get('Kondisi Modul Enva LPU', '-')}*")
         st.write(f"- Arrester Rectifier: *{data_site.get('Arrester Rectifier', '-')}*")
         
+        # 🆕 SEKSI INPUT REKOMENDASI KORLAP (TERSIMPAN KE DATA)
+        st.markdown("---")
+        st.markdown("<h4 style='color: #ffc13b;'>📝 Rekomendasi Koordinator Lapangan</h4>", unsafe_allow_html=True)
+        
+        # Mengambil data rekomendasi yang sudah ada di data (jika ada)
+        rekomendasi_sekarang = data_site.get('Rekomendasi Koordinator', '')
+        if pd.isna(rekomendasi_sekarang):
+            rekomendasi_sekarang = ""
+            
+        # Form input Text Area
+        rekomendasi_input = st.text_area("Input Rekomendasi Tim Korlap di Sini:", 
+                                          value=str(rekomendasi_sekarang), 
+                                          placeholder="Contoh: Replace Arrester Recty, Swap 3p Battery faulty...",
+                                          key="input_rekomendasi")
+        
+        if st.button("💾 Simpan Rekomendasi ke AppSheet", use_container_width=True):
+            if rekomendasi_input.strip() == "":
+                st.warning("Isi kolom rekomendasi terlebih dahulu sebelum disimpan, Zi.")
+            else:
+                with st.spinner("Sedang menyimpan data ke AppSheet..."):
+                    sukses = update_rekomendasi_appsheet(site_pilihan, kolom_site, rekomendasi_input)
+                    if sukses:
+                        st.success(f"Rekomendasi untuk Site {site_pilihan} berhasil disimpan!")
+                        # Clear cache agar web otomatis narik data terbaru pas reload
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error("Gagal menyimpan ke AppSheet. Pastikan kolom 'Rekomendasi Koordinator' sudah ditambahkan di AppSheet Database lo.")
+
         st.markdown("---")
         st.markdown("**📸 Foto Dokumentasi Lapangan (GDrive)**")
         
         # --- FUNGSI REDER FOTO RESPONSIF + TOMBOL DELETE TEMPORER ---
         def render_responsive_image(col_name, label):
-            # Jika foto ada di dalam daftar hapus sementara, jangan di-render
             if col_name in st.session_state.foto_dihapus:
                 return
                 
@@ -163,16 +211,13 @@ else:
                 img_bytes = fetch_image_from_gdrive(url_bersih)
                 if img_bytes:
                     st.image(img_bytes, caption=label, width="stretch")
-                    # Tombol buat ngilangin foto ini dari layar secara temporer
                     if st.button(f"❌ Sembunyikan {label}", key=f"btn_{col_name}"):
                         st.session_state.foto_dihapus.add(col_name)
                         st.rerun()
                 else:
                     st.caption(f"⚠️ {label} gagal ditarik dari Drive")
 
-        # Layout foto 2 kolom bersebelahan agar rapi dan responsif
         f_col1, f_col2 = st.columns(2)
-        
         with f_col1:
             render_responsive_image('KWH Meter', "KWH Meter")
             render_responsive_image('Foto Rectifier', "Foto Rectifier")
