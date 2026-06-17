@@ -105,8 +105,8 @@ else:
 
     data_site = df[df[kolom_site] == site_pilihan].iloc[0]
 
-    # FIX TYPO DI SINI:
-    st.write(f"<p style='text-align: center;'><b>Timestamp Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
+    # --- REQ 2: LABELLING BERUBAH JADI 'Last Data:' ---
+    st.write(f"<p style='text-align: center;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
     st.divider()
 
     # --- LAYOUTING UTAMA ---
@@ -182,11 +182,11 @@ else:
                     else:
                         st.error("Gagal menyimpan data ke AppSheet.")
 
-        # --- DYNAMIC GALLERY SCANNER (SCAN SEMUA KOLOM + MULTIPLE PHOTOS PER CELL) ---
+        # --- REQ 1 & 3: DEDUPLICATED GALLERY HORIZONTAL SCROLL + POPUP LIGHTBOX ---
         st.markdown("---")
         st.markdown("**📸 Foto Dokumentasi Lapangan (Horizontal Scroll & Click to Pop-up)**")
         
-        # Inject Custom CSS styles
+        # Inject Custom CSS styles secara rapat
         st.markdown("""<style>
         .gallery-container { display: flex; overflow-x: auto; padding: 15px; background-color: #151515; border-radius: 10px; border: 1px solid #333; margin-top: 5px; scroll-behavior: smooth; }
         .photo-card { flex: 0 0 auto; width: 140px; margin-right: 15px; text-align: center; position: relative; }
@@ -201,6 +201,8 @@ else:
         </style>""", unsafe_allow_html=True)
         
         all_detected_photos = []
+        seen_urls = set() # --- REQ 3: Set untuk melacak URL foto agar tidak duplikat ---
+        
         for col_name in df.columns:
             val = data_site.get(col_name)
             if pd.isna(val) or not val:
@@ -211,6 +213,11 @@ else:
             for idx, url in enumerate(urls):
                 thumb_url, zoom_url = konversi_link_gdrive(url)
                 if thumb_url:
+                    # Jika URL foto sudah pernah diproses sebelumnya, skip (buang duplikat)
+                    if url in seen_urls:
+                        continue
+                    seen_urls.add(url)
+                    
                     label = f"{col_name} #{idx+1}" if len(urls) > 1 else col_name
                     all_detected_photos.append({
                         'label': label,
@@ -220,14 +227,8 @@ else:
                         'zoom_url': zoom_url
                     })
         
-        labels_aktif = [p['label'] for p in all_detected_photos]
-        foto_disembunyikan = st.multiselect("🚫 Sembunyikan foto dari view sementara (untuk kebutuhan screenshot):", labels_aktif)
-        
         html_items = []
         for p in all_detected_photos:
-            if p['label'] in foto_disembunyikan:
-                continue
-                
             safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{p['col_name']}{p['idx']}")
             
             item_html = f"""<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox">
@@ -250,6 +251,6 @@ else:
 {semua_item}
 </div>"""
             st.markdown(gallery_html, unsafe_allow_html=True)
-            st.caption("💡 *Tips: Scroll ke kanan untuk melihat semua foto. Klik tombol bulat 'X' merah di atas foto untuk menyembunyikan. Klik gambar untuk Pop-up Zoom.*")
+            st.caption("💡 *Tips: Scroll ke kanan untuk melihat semua foto unik. Klik tombol bulat 'X' merah di atas foto untuk menyembunyikan sementara. Klik gambar untuk Pop-up Zoom.*")
         else:
-            st.info("Tidak ada dokumentasi foto yang ditemukan untuk site ini.")
+            st.info("Tidak ada dokumentasi foto unik yang ditemukan untuk site ini.")
