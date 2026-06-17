@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
+import base64 # Tambahan untuk encode foto ke web scrollbar
 
 # Konfigurasi halaman agar fullscreen dan rapi
 st.set_page_config(layout="wide", page_title="Task Force Dashboard NOP")
@@ -11,9 +12,15 @@ APP_ID = "d3525213-95f5-4dff-9eb3-62842c4964f0"
 ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
 TABLE_NAME = "List"
 
-# --- INITIALIZE SESSION STATE ---
-if 'foto_dihapus' not in st.session_state:
-    st.session_state.foto_dihapus = set()
+# --- FIX REQ 2: Fungsi Standarisasi Format Site ID ---
+def format_site_id(site_id):
+    if pd.isna(site_id) or str(site_id).strip() == "":
+        return "-"
+    # Ubah ke huruf besar semua dan buang spasi ga penting
+    s = str(site_id).strip().upper().replace(" ", "")
+    # Jika ketikan typo kelebihan huruf K (misal KKKP067 atau KKKKP067 -> jadi KKP067)
+    s = re.sub(r'^K{3,}P', 'KKP', s)
+    return s
 
 # --- HELPER 1: Konversi Link GDrive ---
 def konversi_link_gdrive(url_mentah):
@@ -73,14 +80,13 @@ def update_rekomendasi_appsheet(site_id, nama_kolom_site, teks_rekomendasi):
         'ApplicationAccessKey': ACCESS_KEY,
         'Content-Type': 'application/json'
     }
-    # Payload Edit untuk mengupdate baris data secara spesifik
     payload = {
         "Action": "Edit",
         "Properties": {"Locale": "id-ID", "Timezone": "Asia/Jakarta"},
         "Rows": [
             {
-                nama_kolom_site: site_id, # Sebagai Key Row penentu baris
-                "Rekomendasi Koordinator": teks_rekomendasi # Kolom baru yang diupdate
+                nama_kolom_site: site_id,
+                "Rekomendasi Koordinator": teks_rekomendasi
             }
         ]
     }
@@ -96,23 +102,18 @@ df = load_data_from_appsheet()
 if df.empty:
     st.warning("Data kosong atau belum terhubung dengan bener ke AppSheet.")
 else:
-    # --- HEADER DASHBOARD ---
-    st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 347 | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
+    # Tentukan kolom acuan site
+    kolom_site = 'Site' if 'Site' in df.columns else ([c for c in df.columns if "site" in c.lower() or "id" in c.lower()] + [df.columns[0]])[0]
+    
+    # Jalankan auto-cleaner biar format dropdown seragam KKP semua
+    df[kolom_site] = df[kolom_site].apply(format_site_id)
+
+    # --- REQ 1: HEADER DASHBOARD TERBARU TASK FORCE 348 ---
+    st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 348 | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
     st.divider()
 
     # --- DROPDOWN SITE ID ---
-    kolom_site = 'Site' if 'Site' in df.columns else ([c for c in df.columns if "site" in c.lower() or "id" in c.lower()] + [df.columns[0]])[0]
-    
-    col_select, col_reset = st.columns([3, 1])
-    with col_select:
-        site_pilihan = st.selectbox("🎯 Pilih Site ID:", df[kolom_site].unique())
-    with col_reset:
-        st.write(" ")
-        st.write(" ")
-        if st.session_state.foto_dihapus:
-            if st.button("🔄 Tampilkan Kembali Semua Foto", use_container_width=True):
-                st.session_state.foto_dihapus.clear()
-                st.rerun()
+    site_pilihan = st.selectbox("🎯 Pilih Site ID (Format Otomatis Seragam):", sorted(df[kolom_site].unique()))
 
     # Filter data berdasarkan site yang dipilih
     data_site = df[df[kolom_site] == site_pilihan].iloc[0]
@@ -167,63 +168,72 @@ else:
         st.write(f"- Kondisi Modul Enva LPU: *{data_site.get('Kondisi Modul Enva LPU', '-')}*")
         st.write(f"- Arrester Rectifier: *{data_site.get('Arrester Rectifier', '-')}*")
         
-        # 🆕 SEKSI INPUT REKOMENDASI KORLAP (TERSIMPAN KE DATA)
+        # SEKSI INPUT REKOMENDASI KORLAP
         st.markdown("---")
         st.markdown("<h4 style='color: #ffc13b;'>📝 Rekomendasi Koordinator Lapangan</h4>", unsafe_allow_html=True)
         
-        # Mengambil data rekomendasi yang sudah ada di data (jika ada)
         rekomendasi_sekarang = data_site.get('Rekomendasi Koordinator', '')
         if pd.isna(rekomendasi_sekarang):
             rekomendasi_sekarang = ""
             
-        # Form input Text Area
         rekomendasi_input = st.text_area("Input Rekomendasi Tim Korlap di Sini:", 
                                           value=str(rekomendasi_sekarang), 
-                                          placeholder="Contoh: Replace Arrester Recty, Swap 3p Battery faulty...",
+                                          placeholder="Contoh: Replace Arrester Recty...",
                                           key="input_rekomendasi")
         
         if st.button("💾 Simpan Rekomendasi ke AppSheet", use_container_width=True):
             if rekomendasi_input.strip() == "":
                 st.warning("Isi kolom rekomendasi terlebih dahulu sebelum disimpan, Zi.")
             else:
-                with st.spinner("Sedang menyimpan data ke AppSheet..."):
+                with st.spinner("Sedang menyimpan data..."):
                     sukses = update_rekomendasi_appsheet(site_pilihan, kolom_site, rekomendasi_input)
                     if sukses:
-                        st.success(f"Rekomendasi untuk Site {site_pilihan} berhasil disimpan!")
-                        # Clear cache agar web otomatis narik data terbaru pas reload
+                        st.success("Rekomendasi berhasil disimpan!")
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error("Gagal menyimpan ke AppSheet. Pastikan kolom 'Rekomendasi Koordinator' sudah ditambahkan di AppSheet Database lo.")
+                        st.error("Gagal menyimpan data ke AppSheet.")
 
+        # --- REQ 3: MULTIPLE PHOTOS HORIZONTAL SCROLL GALLERY WITH ZOOM CLICK ---
         st.markdown("---")
-        st.markdown("**📸 Foto Dokumentasi Lapangan (GDrive)**")
+        st.markdown("**📸 Foto Dokumentasi Lapangan (Horizontal Scroll & Click to Zoom)**")
         
-        # --- FUNGSI REDER FOTO RESPONSIF + TOMBOL DELETE TEMPORER ---
-        def render_responsive_image(col_name, label):
-            if col_name in st.session_state.foto_dihapus:
-                return
-                
+        list_fotos = [
+            ('KWH Meter', "KWH Meter"),
+            ('Foto Rectifier', "Foto Rectifier"),
+            ('MCB PLN', "MCB PLN"),
+            ('Foto Modul', "Foto Modul"),
+            ('Battery (Total Pack)', "Battery Total Pack"),
+            ('Foto Material (Menggunakan Timestemp)', "Foto Material Timestamp")
+        ]
+        
+        html_items = []
+        for col_name, label in list_fotos:
             url_mentah = data_site.get(col_name)
             url_bersih = konversi_link_gdrive(url_mentah)
-            
             if url_bersih:
                 img_bytes = fetch_image_from_gdrive(url_bersih)
                 if img_bytes:
-                    st.image(img_bytes, caption=label, width="stretch")
-                    if st.button(f"❌ Sembunyikan {label}", key=f"btn_{col_name}"):
-                        st.session_state.foto_dihapus.add(col_name)
-                        st.rerun()
-                else:
-                    st.caption(f"⚠️ {label} gagal ditarik dari Drive")
-
-        f_col1, f_col2 = st.columns(2)
-        with f_col1:
-            render_responsive_image('KWH Meter', "KWH Meter")
-            render_responsive_image('Foto Rectifier', "Foto Rectifier")
-            render_responsive_image('MCB PLN', "MCB PLN")
-                
-        with f_col2:
-            render_responsive_image('Foto Modul', "Foto Modul")
-            render_responsive_image('Battery (Total Pack)', "Battery Total Pack")
-            render_responsive_image('Foto Material (Menggunakan Timestemp)', "Foto Material Timestamp")
+                    # Convert byte gambar ke base64 string biar bisa langsung di-inject ke HTML
+                    b64_str = base64.b64encode(img_bytes).decode()
+                    item_html = f"""
+                    <div style="flex: 0 0 auto; width: 140px; margin-right: 15px; text-align: center;">
+                        <a href="{url_bersih}" target="_blank" title="Klik untuk Zoom (Buka di tab baru)">
+                            <img src="data:image/jpeg;base64,{b64_str}" style="width: 130px; height: 130px; object-fit: cover; border-radius: 8px; box-shadow: 0px 4px 8px rgba(0,0,0,0.5); border: 2px solid #333; cursor: pointer; transition: transform .2s;"/>
+                        </a>
+                        <div style="font-size: 11px; margin-top: 6px; color: #e0e0e0; white-space: normal; line-height: 1.2;">{label}</div>
+                    </div>
+                    """
+                    html_items.append(item_html)
+                    
+        if html_items:
+            # Container pembungkus flexbox dengan overflow-x auto untuk memicu scrollbar horizontal
+            gallery_html = f"""
+            <div style="display: flex; overflow-x: auto; padding: 15px; background-color: #1e1e1e; border-radius: 10px; border: 1px solid #333; margin-top: 5px; scroll-behavior: smooth;">
+                {"".join(html_items)}
+            </div>
+            """
+            st.markdown(gallery_html, unsafe_allow_html=True)
+            st.caption("💡 *Tips: Scroll ke kanan untuk melihat foto lain. Klik pada gambar untuk zoom full-size di tab baru.*")
+        else:
+            st.info("Tidak ada dokumentasi foto untuk site ini.")
