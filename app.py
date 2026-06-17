@@ -13,8 +13,8 @@ ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
 TABLE_NAME = "List"
 
 # ⚠️ PASTIKAN URL DAN KEY SUPABASE LO YANG SUDAH JALAN TETAP TERPASANG DI SINI!
-SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
-SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
+SUPABASE_URL = "https://masukin-project-id-lo.supabase.co"
+SUPABASE_KEY = "masukin-anon-key-atau-service-role-key-supabase-lo"
 SUPABASE_TABLE = "dapot_data"
 
 # --- Fungsi Standarisasi & Ekstraksi Format Site ID ---
@@ -137,10 +137,10 @@ else:
         
     df_merged['dropdown_label'] = df_merged.apply(susun_nama_dropdown, axis=1)
 
-    # --- INJECT CSS CUSTOM UNTUK STYLING PPT PRESENTASI COMPACT ---
+    # --- INJECT CSS CUSTOM ---
+    # FIX: Lightbox z-index dibikin super tinggi (9999999) dan tombol close diturunin (top: 60px)
     st.markdown("""<style>
     .block-container { padding-top: 3.2rem !important; padding-bottom: 1rem !important; }
-    .ppt-header { background-color: #d32f2f; padding: 10px 20px; border-radius: 8px; margin-bottom: 15px; color: white; display: flex; justify-content: space-between; align-items: center; }
     .ppt-card-blue { background-color: #1e3d59; color: white; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #ffc13b; }
     .ppt-card-gold { background-color: #ffc13b; color: #1e3d59; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #1e3d59; }
     .gallery-container { display: flex; overflow-x: auto; padding: 10px; background-color: #111; border-radius: 8px; border: 1px solid #333; }
@@ -148,30 +148,47 @@ else:
     .hide-checkbox { display: none; }
     .hide-checkbox:checked + .photo-card { display: none; }
     .exclude-btn { position: absolute; top: 1px; right: 8px; background: rgba(211,47,47,0.9); color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; line-height: 16px; cursor: pointer; font-weight: bold; z-index: 10; }
-    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 99999; justify-content: center; align-items: center; }
+    
+    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999999; justify-content: center; align-items: center; }
     .lightbox:target { display: flex; }
-    .lightbox img { max-width: 80%; max-height: 80%; border-radius: 4px; }
-    .lightbox .close-lightbox { position: absolute; top: 20px; right: 30px; color: #fff; font-size: 40px; text-decoration: none; }
+    .lightbox img { max-width: 85%; max-height: 85%; border-radius: 6px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    .lightbox .close-lightbox { position: absolute; top: 60px; right: 40px; color: #fff; font-size: 45px; text-decoration: none; font-weight: bold; z-index: 9999999; text-shadow: 0px 2px 4px rgba(0,0,0,0.8); }
+    .lightbox .close-lightbox:hover { color: #ff5252; }
+    
     div[data-testid="stMetric"] { background-color: #262730; padding: 5px 10px; border-radius: 4px; border: 1px solid #444; }
     .findings-grid { display: grid; grid-template-columns: auto auto; gap: 8px 15px; background-color: #262730; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; border: 1px solid #444; }
     .f-item { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 4px; }
-    /* CSS Footer Personal */
     .custom-footer { text-align: center; font-size: 12px; color: #888; margin-top: 30px; border-top: 1px solid #333; padding-top: 10px; }
     </style>""", unsafe_allow_html=True)
 
-    # --- ROW 1: TOP BAR TITLE SLIDE (PPT HEADER) ---
+    # --- ROW 1: TOP BAR TITLE SLIDE DENGAN BANNER TELKOMSEL ---
     col_head_title, col_head_select = st.columns([1.8, 1.2])
     with col_head_title:
-        st.markdown("""<div style='background-color: #d32f2f; padding: 8px 15px; border-radius: 6px; color: white;'>
-            <h3 style='margin:0; font-size:20px; font-weight:bold;'>Task Force 348 | NOP PALANGKARAYA</h3>
-        </div>""", unsafe_allow_html=True)
+        # Kalo lo udah bikin gambar banner sendiri pakai Photoshop/AI, ganti blok <div> di bawah ini pakai tag image ini:
+        # <img src="URL_GAMBAR_GDRIVE_LO_DI_SINI" style="width: 100%; border-radius: 6px;">
+        
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #ed1c24 0%, #b71c1c 50%, #1a1a1a 100%);
+                    padding: 12px 20px;
+                    border-radius: 6px;
+                    color: white;
+                    border-left: 6px solid #ffc13b;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.3);'>
+            <h3 style='margin:0; font-size:22px; font-weight:900; letter-spacing: 0.5px;'>
+                🚀 TASK FORCE 348 <span style='color: #ffc13b;'>|</span> NOP PALANGKARAYA
+            </h3>
+            <p style='margin: 2px 0 0 0; font-size: 12px; opacity: 0.9; font-weight: 500;'>TELECOMMUNICATION & NETWORK OPERATION DASHBOARD</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
     with col_head_select:
+        st.write("") # Spacer kecil biar sejajar sama banner
         label_pilihan = st.selectbox("🎯 Target Monitoring Site ID:", sorted(df_merged['dropdown_label'].unique()), label_visibility="collapsed")
 
     data_site = df_merged[df_merged['dropdown_label'] == label_pilihan].iloc[0]
     
     # Horizontal Sub-bar untuk Last Data Timestamp
-    st.markdown(f"<p style='text-align: right; margin: -10px 5px 10px 0; font-size: 13px;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: right; margin: -5px 5px 10px 0; font-size: 13px;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
 
     # --- ROW 2: MAIN PRESENTATION GRID (3 COLUMNS SPLIT) ---
     col1, col2, col3 = st.columns([1, 0.9, 1.3])
@@ -231,9 +248,14 @@ else:
         if st.button("💾 Push Update Data", use_container_width=True):
             if rekomendasi_input.strip() != "":
                 with st.spinner("Pushing..."):
-                    if update_rekomendasi_appsheet(data_site[kolom_site_app], kolom_site_app, rekomendasi_input):
+                    site_id_asli_appsheet = data_site[kolom_site_app]
+                    sukses = update_rekomendasi_appsheet(site_id_asli_appsheet, kolom_site_app, rekomendasi_input)
+                    if sukses:
+                        st.success("Rekomendasi berhasil disimpan!")
                         st.cache_data.clear()
                         st.rerun()
+                    else:
+                        st.error("Gagal menyimpan data ke AppSheet.")
 
     # --- ROW 3: FOOTER ROW (GALLERY SCANNER & FILE ATTACHMENTS) ---
     all_detected_photos = []
