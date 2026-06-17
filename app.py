@@ -17,37 +17,42 @@ def konversi_link_gdrive(url_mentah):
 
 # --- SIMULASI FUNGSI PULL DATA FROM APPSHEET ---
 # Nanti tinggal lo sambungin ke REST API AppSheet lo yang kemarin ya, Zi!
-@st.cache_data
+@st.cache_data(ttl=600) # Data bakal otomatis refresh tiap 10 menit
 def load_data_from_appsheet():
-    # Ini mapping struktur data persis sesuai log yang lo share
-    data_lapangan = {
-        "Site_ID": ["KKP226"], # Dropdown key
-        "Timestamp": ["6/17/2026 11:29:10 AM"],
-        "Area": ["AREA 4"],
-        "Regional": ["ROB_Kalimantan"],
-        "NOP": ["NOP PALANGKARAYA"],
-        "Phase_PLN": ["3 Phase"],
-        "Daya_PLN": ["13.500 VA"],
-        "Teg_RN": [221.00],
-        "Teg_SN": [224.00],
-        "Teg_TN": [230.00],
-        "Beban_R": [3.00],
-        "Beban_S": [3.00],
-        "Beban_T": [3.00],
-        "G_N_Grounding": [2.00],
-        "Type_Rectifier": ["ZTE"],
-        "Rectifier_Current": [45.00],
-        "Jumlah_Module": [3],
-        "Total_Module_Faulty": [0],
-        "BBT_Backup": ["1 - 2 Jam"],
-        # Link Foto dari Log Lapangan lo
-        "Foto_KWH": ["https://drive.google.com/open?id=1xrBmGJKpYm2qWvJebA1yY_rTLhe8N53-"],
-        "Foto_MCB_PLN": ["https://drive.google.com/open?id=1FA6mu6l8_1pT8Kcujn_cl50viwDyMrR5"],
-        "Foto_Rectifier": ["https://drive.google.com/open?id=1E7f6c91HOeLUvS9-HUeqv0qsNyheYrCo"],
-        "Foto_Modul": ["https://drive.google.com/open?id=1Ptx2ScOG7OEdGzoB1wXS89v4_35Xqzcc"],
-        "Foto_Battery_Pack": ["https://drive.google.com/open?id=1Ad1iZC-h68aqkOF8AbmPO8DTCOXbNKFm"]
+    # --- ISI DENGAN DATA DARI LANGKAH 1 ---
+    APP_ID = "d3525213-95f5-4dff-9eb3-62842c4964f0"
+    ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
+    TABLE_NAME = "List"
+    
+    url = f"https://api.appsheet.com/api/v2/apps/{APP_ID}/tables/{TABLE_NAME}/Action"
+    
+    headers = {
+        'ApplicationAccessKey': ACCESS_KEY,
+        'Content-Type': 'application/json'
     }
-    return pd.DataFrame(data_lapangan)
+    
+    # Payload 'Find' tanpa isi Rows untuk narik SEMUA baris data
+    payload = {
+        "Action": "Find",
+        "Properties": {
+            "Locale": "id-ID",
+            "Timezone": "Asia/Jakarta"
+        },
+        "Rows": []
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code == 200:
+            data_json = response.json()
+            # Otomatis jadi DataFrame
+            return pd.DataFrame(data_json)
+        else:
+            st.error(f"Gagal terhubung ke AppSheet API (Status: {response.status_code})")
+            return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Terjadi error koneksi: {e}")
+        return pd.DataFrame()
 
 # Load data
 df = load_data_from_appsheet()
