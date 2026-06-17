@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
-import base64 # Tambahan untuk encode foto ke web scrollbar
 
 # Konfigurasi halaman agar fullscreen dan rapi
 st.set_page_config(layout="wide", page_title="Task Force Dashboard NOP")
@@ -12,45 +11,46 @@ APP_ID = "d3525213-95f5-4dff-9eb3-62842c4964f0"
 ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
 TABLE_NAME = "List"
 
-# --- FIX REQ 2: Fungsi Standarisasi Format Site ID ---
+# --- REQ 2: Fungsi Standarisasi Format Site ID ---
 def format_site_id(site_id):
     if pd.isna(site_id) or str(site_id).strip() == "":
         return "-"
-    # Ubah ke huruf besar semua dan buang spasi ga penting
+    # Ubah ke huruf besar semua dan buang spasi
     s = str(site_id).strip().upper().replace(" ", "")
-    # Jika ketikan typo kelebihan huruf K (misal KKKP067 atau KKKKP067 -> jadi KKP067)
-    s = re.sub(r'^K{3,}P', 'KKP', s)
+    # Jika typo kelebihan huruf K di depan (misal KKKP067 -> KKP067)
+    s = re.sub(r'^K+P', 'KKP', s)
     return s
 
-# --- HELPER 1: Konversi Link GDrive ---
+# --- REQ 3: Ekstraksi ID GDrive & Konversi ke Endpoint Thumbnail (Bypass Block) ---
 def konversi_link_gdrive(url_mentah):
     if pd.isna(url_mentah) or not url_mentah or str(url_mentah).strip() == "":
-        return None
+        return None, None
         
     url_str = str(url_mentah)
     match = re.search(r'(https?://[^\s,"\'\}]+)', url_str)
     if not match:
-        return None
+        return None, None
         
-    link_inter = match.group(1).strip()
+    link_bersih = match.group(1).strip()
     
-    if "open?id=" in link_inter:
-        return link_inter.replace("open?id=", "uc?export=download&id=")
-    if "Uc?id=" in link_inter or "uc?id=" in link_inter:
-        return link_inter.replace("Uc?id=", "uc?export=download&id=").replace("uc?id=", "uc?export=download&id=")
+    # Ambil ID unik file Google Drive
+    file_id = None
+    if "id=" in link_bersih:
+        id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_inter := link_bersih)
+        if id_match:
+            file_id = id_match.group(1)
+    elif "drive.google.com/file/d/" in link_bersih:
+        id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_bersih)
+        if id_match:
+            file_id = id_match.group(1)
+            
+    if file_id:
+        # sz=w400 untuk display mini di scrollbar, sz=w1600 untuk zoom klik resolusi tajam
+        thumb_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w400"
+        zoom_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w1600"
+        return thumb_url, zoom_url
         
-    return link_inter
-
-# --- HELPER 2: Fetch Gambar dari GDrive ---
-@st.cache_data(show_spinner=False, ttl=600)
-def fetch_image_from_gdrive(url):
-    try:
-        res = requests.get(url, timeout=10)
-        if res.status_code == 200:
-            return res.content
-    except:
-        pass
-    return None
+    return link_bersih, link_bersih
 
 # --- FUNGSI PULL DATA DARI APPSHEET API ---
 @st.cache_data(ttl=300)
@@ -105,14 +105,14 @@ else:
     # Tentukan kolom acuan site
     kolom_site = 'Site' if 'Site' in df.columns else ([c for c in df.columns if "site" in c.lower() or "id" in c.lower()] + [df.columns[0]])[0]
     
-    # Jalankan auto-cleaner biar format dropdown seragam KKP semua
+    # Jalankan penyeragaman format Site ID sebelum masuk dropdown
     df[kolom_site] = df[kolom_site].apply(format_site_id)
 
-    # --- REQ 1: HEADER DASHBOARD TERBARU TASK FORCE 348 ---
+    # --- REQ 1: UPDATE HEADER DASHBOARD JADI TASK FORCE 348 ---
     st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 348 | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
     st.divider()
 
-    # --- DROPDOWN SITE ID ---
+    # --- REQ 1: DROPDOWN SEKARANG MUNCUL DI HALAMAN UTAMA ---
     site_pilihan = st.selectbox("🎯 Pilih Site ID (Format Otomatis Seragam):", sorted(df[kolom_site].unique()))
 
     # Filter data berdasarkan site yang dipilih
@@ -194,7 +194,7 @@ else:
                     else:
                         st.error("Gagal menyimpan data ke AppSheet.")
 
-        # --- REQ 3: MULTIPLE PHOTOS HORIZONTAL SCROLL GALLERY WITH ZOOM CLICK ---
+        # --- REQ 3: GALLERY FOTO BERJEJER (HORIZONTAL SCROLL) + HIDE CHECKBOX & ZOOM ---
         st.markdown("---")
         st.markdown("**📸 Foto Dokumentasi Lapangan (Horizontal Scroll & Click to Zoom)**")
         
@@ -207,33 +207,36 @@ else:
             ('Foto Material (Menggunakan Timestemp)', "Foto Material Timestamp")
         ]
         
+        # Filter Hapus Temporer Hemat Space: Gunakan Multiselect di atas galeri
+        labels_aktif = [lbl for _, lbl in list_fotos]
+        foto_disembunyikan = st.multiselect("🚫 Sembunyikan foto sementara (untuk kebutuhan screenshot):", labels_aktif)
+        
         html_items = []
         for col_name, label in list_fotos:
+            if label in foto_disembunyikan:
+                continue
+                
             url_mentah = data_site.get(col_name)
-            url_bersih = konversi_link_gdrive(url_mentah)
-            if url_bersih:
-                img_bytes = fetch_image_from_gdrive(url_bersih)
-                if img_bytes:
-                    # Convert byte gambar ke base64 string biar bisa langsung di-inject ke HTML
-                    b64_str = base64.b64encode(img_bytes).decode()
-                    item_html = f"""
-                    <div style="flex: 0 0 auto; width: 140px; margin-right: 15px; text-align: center;">
-                        <a href="{url_bersih}" target="_blank" title="Klik untuk Zoom (Buka di tab baru)">
-                            <img src="data:image/jpeg;base64,{b64_str}" style="width: 130px; height: 130px; object-fit: cover; border-radius: 8px; box-shadow: 0px 4px 8px rgba(0,0,0,0.5); border: 2px solid #333; cursor: pointer; transition: transform .2s;"/>
-                        </a>
-                        <div style="font-size: 11px; margin-top: 6px; color: #e0e0e0; white-space: normal; line-height: 1.2;">{label}</div>
-                    </div>
-                    """
-                    html_items.append(item_html)
+            thumb_url, zoom_url = konversi_link_gdrive(url_mentah)
+            
+            if thumb_url:
+                item_html = f"""
+                <div style="flex: 0 0 auto; width: 140px; margin-right: 15px; text-align: center;">
+                    <a href="{zoom_url}" target="_blank" title="Klik untuk Zoom Resolusi Penuh">
+                        <img src="{thumb_url}" style="width: 130px; height: 130px; object-fit: cover; border-radius: 8px; box-shadow: 0px 4px 8px rgba(0,0,0,0.4); border: 2px solid #444; cursor: pointer; transition: transform 0.2s;"/>
+                    </a>
+                    <div style="font-size: 11px; margin-top: 6px; color: #e0e0e0; white-space: normal; line-height: 1.2;">{label}</div>
+                </div>
+                """
+                html_items.append(item_html)
                     
         if html_items:
-            # Container pembungkus flexbox dengan overflow-x auto untuk memicu scrollbar horizontal
             gallery_html = f"""
-            <div style="display: flex; overflow-x: auto; padding: 15px; background-color: #1e1e1e; border-radius: 10px; border: 1px solid #333; margin-top: 5px; scroll-behavior: smooth;">
+            <div style="display: flex; overflow-x: auto; padding: 15px; background-color: #151515; border-radius: 10px; border: 1px solid #333; margin-top: 5px; scroll-behavior: smooth;">
                 {"".join(html_items)}
             </div>
             """
             st.markdown(gallery_html, unsafe_allow_html=True)
-            st.caption("💡 *Tips: Scroll ke kanan untuk melihat foto lain. Klik pada gambar untuk zoom full-size di tab baru.*")
+            st.caption("💡 *Tips: Geser/Scroll ke kanan untuk melihat foto lain. Klik langsung pada gambar untuk memperbesar (zoom) di tab baru.*")
         else:
-            st.info("Tidak ada dokumentasi foto untuk site ini.")
+            st.info("Tidak ada dokumentasi foto yang ditampilkan.")
