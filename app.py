@@ -3,8 +3,12 @@ import pandas as pd
 import requests
 import re
 
-# Konfigurasi halaman
+# Konfigurasi halaman agar fullscreen dan rapi
 st.set_page_config(layout="wide", page_title="Task Force Dashboard NOP")
+
+# --- INITIALIZE SESSION STATE (Untuk simpan daftar foto yang dihapus sementara) ---
+if 'foto_dihapus' not in st.session_state:
+    st.session_state.foto_dihapus = set()
 
 # --- HELPER 1: Konversi Link GDrive ---
 def konversi_link_gdrive(url_mentah):
@@ -25,14 +29,13 @@ def konversi_link_gdrive(url_mentah):
         
     return link_bersih
 
-# --- HELPER 2: BYPASS BLOCK GOOGLE DRIVE ---
-# Fungsi ini nyedot fotonya dari backend biar ga ke-block sama browser
+# --- HELPER 2: Fetch Gambar dari GDrive ---
 @st.cache_data(show_spinner=False, ttl=600)
 def fetch_image_from_gdrive(url):
     try:
         res = requests.get(url, timeout=10)
         if res.status_code == 200:
-            return res.content # Mengembalikan data foto mentah (bytes)
+            return res.content
     except:
         pass
     return None
@@ -69,26 +72,31 @@ def load_data_from_appsheet():
 df = load_data_from_appsheet()
 
 if df.empty:
-    st.warning("Data kosong. Pastikan AppSheet terhubung dengan baik.")
+    st.warning("Data kosong atau belum terhubung dengan bener ke AppSheet.")
 else:
-    # --- FILTER SIDEBAR & CONTROLLER ---
-    st.sidebar.header("⚙️ Dashboard Controller")
+    # --- HEADER DASHBOARD ---
+    st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 347 | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
+    st.divider()
+
+    # --- DROPDOWN SITE ID (SEKARANG DI HALAMAN UTAMA, BUKAN DI SIDEBAR) ---
+    # Nyari nama kolom Site lo secara presisi
+    kolom_site = 'Site' if 'Site' in df.columns else ([c for c in df.columns if "site" in c.lower() or "id" in c.lower()] + [df.columns[0]])[0]
     
-    possible_site_cols = [c for c in df.columns if "site" in c.lower()]
-    if possible_site_cols:
-        kolom_site = possible_site_cols[0]
-    else:
-        backup_cols = [c for c in df.columns if c.lower() == 'id' or c.lower() == 'site id']
-        kolom_site = backup_cols[0] if backup_cols else df.columns[0]
-    
-    site_pilihan = st.sidebar.selectbox("Pilih Site ID:", df[kolom_site].unique())
-    show_photos = st.sidebar.checkbox("Tampilkan Foto Dokumentasi", value=True)
+    col_select, col_reset = st.columns([3, 1])
+    with col_select:
+        site_pilihan = st.selectbox("🎯 Pilih Site ID:", df[kolom_site].unique())
+    with col_reset:
+        st.write(" ") # Kasih space kosong biar sejajar tombol
+        st.write(" ")
+        if st.session_state.foto_dihapus:
+            if st.button("🔄 Tampilkan Kembali Semua Foto", use_container_width=True):
+                st.session_state.foto_dihapus.clear()
+                st.rerun()
 
     # Filter data berdasarkan site yang dipilih
     data_site = df[df[kolom_site] == site_pilihan].iloc[0]
 
-    # --- HEADER DASHBOARD (SEKARANG SITE ID-NYA MUNCUL DI SINI) ---
-    st.markdown(f"<h2 style='text-align: center; color: #d32f2f;'>Task Force 347 | {site_pilihan} | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
+    # Tampilkan info di bawah dropdown
     st.write(f"<p style='text-align: center;'><b>Timestamp Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
     st.divider()
 
@@ -102,7 +110,7 @@ else:
         info_dasar = {
             "Parameter": ["Site ID", "Phase PLN", "Grounding KWH", "Type Rectifier", "Arrester", "Kondisi Display Rectifier"],
             "Value": [
-                site_pilihan, # Site ID dimasukkan ke tabel info dasar juga
+                site_pilihan,
                 data_site.get('Phase PLN', '-'),
                 data_site.get('Grounding KWH', '-'),
                 data_site.get('Type Rectifier', '-'),
@@ -140,31 +148,37 @@ else:
         st.write(f"- Arrester Rectifier: *{data_site.get('Arrester Rectifier', '-')}*")
         
         st.markdown("---")
+        st.markdown("**📸 Foto Dokumentasi Lapangan (GDrive)**")
         
-        # SAKLAR FOTO SCREENSHOT (DENGAN BYPASS GOOGLE DRIVE)
-        if show_photos:
-            st.markdown("**📸 Foto Dokumentasi Lapangan (GDrive)**")
-            f_col1, f_col2 = st.columns(2)
+        # --- FUNGSI REDER FOTO RESPONSIF + TOMBOL DELETE TEMPORER ---
+        def render_responsive_image(col_name, label):
+            # Jika foto ada di dalam daftar hapus sementara, jangan di-render
+            if col_name in st.session_state.foto_dihapus:
+                return
+                
+            url_mentah = data_site.get(col_name)
+            url_bersih = konversi_link_gdrive(url_mentah)
             
-            # --- FUNGSI MENGGAMBAR FOTO ---
-            def render_image(url_data, caption):
-                url_bersih = konversi_link_gdrive(url_data)
-                if url_bersih:
-                    img_bytes = fetch_image_from_gdrive(url_bersih)
-                    if img_bytes:
-                        # Menampilkan gambar raw ke frontend (100% no CORS issue)
-                        st.image(img_bytes, caption=caption, use_column_width=True)
-                    else:
-                        st.caption(f"⚠️ {caption} gagal ditarik")
+            if url_bersih:
+                img_bytes = fetch_image_from_gdrive(url_bersih)
+                if img_bytes:
+                    st.image(img_bytes, caption=label, width="stretch")
+                    # Tombol buat ngilangin foto ini dari layar secara temporer
+                    if st.button(f"❌ Sembunyikan {label}", key=f"btn_{col_name}"):
+                        st.session_state.foto_dihapus.add(col_name)
+                        st.rerun()
+                else:
+                    st.caption(f"⚠️ {label} gagal ditarik dari Drive")
 
-            with f_col1:
-                render_image(data_site.get('KWH Meter'), "KWH Meter")
-                render_image(data_site.get('Foto Rectifier'), "Foto Rectifier")
-                render_image(data_site.get('MCB PLN'), "MCB PLN")
-                    
-            with f_col2:
-                render_image(data_site.get('Foto Modul'), "Foto Modul")
-                render_image(data_site.get('Battery (Total Pack)'), "Battery Total Pack")
-                render_image(data_site.get('Foto Material (Menggunakan Timestemp)'), "Foto Material Timestamp")
-        else:
-            st.warning("⚠️ Mode Screenshot Aktif: Semua foto disembunyikan sementara dari layar.")
+        # Layout foto 2 kolom bersebelahan agar rapi dan responsif
+        f_col1, f_col2 = st.columns(2)
+        
+        with f_col1:
+            render_responsive_image('KWH Meter', "KWH Meter")
+            render_responsive_image('Foto Rectifier', "Foto Rectifier")
+            render_responsive_image('MCB PLN', "MCB PLN")
+                
+        with f_col2:
+            render_responsive_image('Foto Modul', "Foto Modul")
+            render_responsive_image('Battery (Total Pack)', "Battery Total Pack")
+            render_responsive_image('Foto Material (Menggunakan Timestemp)', "Foto Material Timestamp")
