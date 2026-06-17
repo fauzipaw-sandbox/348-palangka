@@ -4,37 +4,31 @@ import requests
 import re
 import difflib
 
-# Konfigurasi halaman agar fullscreen dan rapi
-st.set_page_config(layout="wide", page_title="Task Force Dashboard NOP")
+# Konfigurasi halaman agar fullscreen, responsif, dan rapi ala slide PPT
+st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
 
 # --- KREDENSIAL MASTER ---
 APP_ID = "d3525213-95f5-4dff-9eb3-62842c4964f0"
 ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
 TABLE_NAME = "List"
 
-# ⚠️ PASTIKAN SUPABASE URL DAN KEY LO TETEP TERPASANG DI SINI YA, ZI!
+# ⚠️ PASTIKAN URL DAN KEY SUPABASE LO YANG SUDAH JALAN TETAP TERPASANG DI SINI!
 SUPABASE_URL = "https://masukin-project-id-lo.supabase.co"
 SUPABASE_KEY = "masukin-anon-key-atau-service-role-key-supabase-lo"
 SUPABASE_TABLE = "dapot_data"
 
-# --- Fungsi Standarisasi Format Site ID (UPDATE: EKSTRAKSI 3 HURUF + 3 ANGKA) ---
+# --- Fungsi Standarisasi & Ekstraksi Format Site ID ---
 def format_site_id(site_id):
     if pd.isna(site_id) or str(site_id).strip() == "":
         return "-"
-    # Bersihkan spasi dan karakter pemisah
     s = str(site_id).strip().upper().replace(" ", "").replace("-", "").replace("_", "")
-    
-    # Deteksi dan ekstrak pola murni 3 Huruf + 3 Angka (contoh: KKP326, TML005)
-    # Ini akan memotong awalan/akhiran gak penting kayak 'TTML005BAMBULUNG' jadi 'TML005'
     match = re.search(r'[A-Z]{3}\d{3}', s)
     if match:
         return match.group(0)
-        
-    # Fallback kalau formatnya gak sesuai pola di atas
     s = re.sub(r'^K+P', 'KKP', s)
     return s
 
-# --- Fungsi Fuzzy Matching Karakter Mendekati ---
+# --- Fungsi Fuzzy Matching ---
 def cari_site_terdekat(site_appsheet, list_site_supabase):
     if site_appsheet == "-":
         return None
@@ -49,8 +43,8 @@ def konversi_link_gdrive(url_tunggal):
     link_bersih = str(url_tunggal).strip()
     file_id = None
     
-    if "id=" in link_bersih:
-        id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_bersih)
+    if "id=" in link_clean := link_bersih:
+        id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_clean)
         if id_match:
             file_id = id_match.group(1)
     elif "drive.google.com/file/d/" in link_bersih:
@@ -70,10 +64,7 @@ def konversi_link_gdrive(url_tunggal):
 @st.cache_data(ttl=300)
 def load_data_from_appsheet():
     url = f"https://api.appsheet.com/api/v2/apps/{APP_ID}/tables/{TABLE_NAME}/Action"
-    headers = {
-        'ApplicationAccessKey': ACCESS_KEY,
-        'Content-Type': 'application/json'
-    }
+    headers = { 'ApplicationAccessKey': ACCESS_KEY, 'Content-Type': 'application/json' }
     payload = {
         "Action": "Find",
         "Properties": {"Locale": "id-ID", "Timezone": "Asia/Jakarta"},
@@ -81,44 +72,31 @@ def load_data_from_appsheet():
     }
     try:
         response = requests.post(url, headers=headers, json=payload)
-        if response.status_code == 200:
-            return pd.DataFrame(response.json())
+        if response.status_code == 200: return pd.DataFrame(response.json())
         return pd.DataFrame()
     except:
         return pd.DataFrame()
 
-# --- FUNGSI PULL DATA DARI SUPABASE REST API ---
+# --- FUNGSI PULL DATA DARI SUPABASE ---
 @st.cache_data(ttl=600)
 def load_data_from_supabase():
     url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?select=*"
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}"
-    }
+    headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
     try:
         response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            return pd.DataFrame(response.json())
+        if response.status_code == 200: return pd.DataFrame(response.json())
         return pd.DataFrame()
     except:
         return pd.DataFrame()
 
-# --- FUNGSI PUSH/UPDATE DATA KE APPSHEET API ---
+# --- FUNGSI PUSH DATA KE APPSHEET ---
 def update_rekomendasi_appsheet(site_id_asli, nama_kolom_site, teks_rekomendasi):
     url = f"https://api.appsheet.com/api/v2/apps/{APP_ID}/tables/{TABLE_NAME}/Action"
-    headers = {
-        'ApplicationAccessKey': ACCESS_KEY,
-        'Content-Type': 'application/json'
-    }
+    headers = { 'ApplicationAccessKey': ACCESS_KEY, 'Content-Type': 'application/json' }
     payload = {
         "Action": "Edit",
         "Properties": {"Locale": "id-ID", "Timezone": "Asia/Jakarta"},
-        "Rows": [
-            {
-                nama_kolom_site: site_id_asli,
-                "Rekomendasi Koordinator": teks_rekomendasi
-            }
-        ]
+        "Rows": [{ nama_kolom_site: site_id_asli, "Rekomendasi Koordinator": teks_rekomendasi }]
     }
     try:
         response = requests.post(url, headers=headers, json=payload)
@@ -126,72 +104,74 @@ def update_rekomendasi_appsheet(site_id_asli, nama_kolom_site, teks_rekomendasi)
     except:
         return False
 
-# Load kedua sumber data asli
+# Load Data
 df_app = load_data_from_appsheet()
 df_sup = load_data_from_supabase()
 
-if df_app.empty:
-    st.warning("Data AppSheet kosong atau belum terhubung dengan bener.")
-elif df_sup.empty:
-    st.warning("Data Supabase dapot_data gagal ditarik. Pastikan URL dan KEY Supabase lo udah bener, Zi.")
+if df_app.empty or df_sup.empty:
+    st.warning("Gagal memuat data. Periksa koneksi database lo, Zi.")
 else:
-    # 1. Deteksi kolom acuan site di AppSheet
+    # Processing & Merge Data
     kolom_site_app = 'Site' if 'Site' in df_app.columns else ([c for c in df_app.columns if "site" in c.lower() or "id" in c.lower()] + [df_app.columns[0]])[0]
-    
-    # 2. Standarisasi & Ekstraksi karakter id site untuk proses matching
     df_app['site_clean_app'] = df_app[kolom_site_app].apply(format_site_id)
     df_sup['site_clean_sup'] = df_sup['site_id'].apply(format_site_id)
     
-    # 3. Proses Fuzzy Matching karakter yang mendekati sama
     list_site_sup = df_sup['site_clean_sup'].dropna().unique().tolist()
-    mapping_fuzzy = {}
-    for site_a in df_app['site_clean_app'].unique():
-        if site_a in list_site_sup:
-            mapping_fuzzy[site_a] = site_a
-        else:
-            match_terdekat = cari_site_terdekat(site_a, list_site_sup)
-            if match_terdekat:
-                mapping_fuzzy[site_a] = match_terdekat
-                
+    mapping_fuzzy = {site_a: (site_a if site_a in list_site_sup else cari_site_terdekat(site_a, list_site_sup)) for site_a in df_app['site_clean_app'].unique()}
     df_app['matched_site_sup'] = df_app['site_clean_app'].map(mapping_fuzzy)
-    
-    # 4. Merge Dataframe AppSheet dengan Supabase dapot_data
     df_merged = pd.merge(df_app, df_sup, left_on='matched_site_sup', right_on='site_clean_sup', how='left', suffixes=('', '_dapot'))
 
-    # 5. FIX VISUAL: Mengubah struktur nama di dropdown (Highlight & Bersihin "nan")
+    # Dropdown Formatting
     def susun_nama_dropdown(row):
         s_id = row['matched_site_sup'] if pd.notna(row['matched_site_sup']) else row['site_clean_app']
         s_name = row['site_name'] if pd.notna(row.get('site_name')) else 'UNKNOWN NAME'
         s_class = row['site_class'] if pd.notna(row.get('site_class')) else '-'
         s_grid = row['grid_category_new'] if pd.notna(row.get('grid_category_new')) else '-'
         s_hub = row['hub_site'] if pd.notna(row.get('hub_site')) else '-'
-        
         return f"[{s_id}] ➔ {s_name} ({s_class} • {s_grid} • {s_hub})"
         
     df_merged['dropdown_label'] = df_merged.apply(susun_nama_dropdown, axis=1)
 
-    # --- HEADER DASHBOARD MASTER TASK FORCE 348 ---
-    st.markdown("<h2 style='text-align: center; color: #d32f2f;'>Task Force 348 | NOP PALANGKARAYA</h2>", unsafe_allow_html=True)
-    st.divider()
+    # --- INJECT CSS CUSTOM UNTUK STYLING PPT PRESENTASI COMPACT ---
+    st.markdown("""<style>
+    .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
+    .ppt-header { background-color: #d32f2f; padding: 10px 20px; border-radius: 8px; margin-bottom: 15px; color: white; display: flex; justify-content: space-between; align-items: center; }
+    .ppt-card-blue { background-color: #1e3d59; color: white; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #ffc13b; }
+    .ppt-card-gold { background-color: #ffc13b; color: #1e3d59; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #1e3d59; }
+    .gallery-container { display: flex; overflow-x: auto; padding: 10px; background-color: #111; border-radius: 8px; border: 1px solid #333; }
+    .photo-card { flex: 0 0 auto; width: 110px; margin-right: 12px; text-align: center; position: relative; }
+    .hide-checkbox { display: none; }
+    .hide-checkbox:checked + .photo-card { display: none; }
+    .exclude-btn { position: absolute; top: 1px; right: 8px; background: rgba(211,47,47,0.9); color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; line-height: 16px; cursor: pointer; font-weight: bold; z-index: 10; }
+    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 99999; justify-content: center; align-items: center; }
+    .lightbox:target { display: flex; }
+    .lightbox img { max-width: 80%; max-height: 80%; border-radius: 4px; }
+    .lightbox .close-lightbox { position: absolute; top: 20px; right: 30px; color: #fff; font-size: 40px; text-decoration: none; }
+    div[data-testid="stMetric"] { background-color: #262730; padding: 5px 10px; border-radius: 4px; border: 1px solid #444; }
+    </style>""", unsafe_allow_html=True)
 
-    # --- DROPDOWN SITE ID DENGAN FORMAT BARU ---
-    label_pilihan = st.selectbox("🎯 Pilih Site ID:", sorted(df_merged['dropdown_label'].unique()))
+    # --- ROW 1: TOP BAR TITLE SLIDE (PPT HEADER) ---
+    col_head_title, col_head_select = st.columns([1.8, 1.2])
+    with col_head_title:
+        st.markdown("""<div style='background-color: #d32f2f; padding: 8px 15px; border-radius: 6px; color: white;'>
+            <h3 style='margin:0; font-size:20px; font-weight:bold;'>Task Force 348 | NOP PALANGKARAYA</h3>
+        </div>""", unsafe_allow_html=True)
+    with col_head_select:
+        label_pilihan = st.selectbox("🎯 Target Monitoring Site ID:", sorted(df_merged['dropdown_label'].unique()), label_visibility="collapsed")
 
-    # Filter data baris berdasarkan label yang dipilih user
     data_site = df_merged[df_merged['dropdown_label'] == label_pilihan].iloc[0]
+    
+    # Horizontal Sub-bar untuk Last Data Timestamp
+    st.markdown(f"<p style='text-align: right; margin: -10px 5px 10px 0; font-size: 13px;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
 
-    st.write(f"<p style='text-align: center;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
-    st.divider()
+    # --- ROW 2: MAIN PRESENTATION GRID (3 COLUMNS SPLIT) ---
+    col1, col2, col3 = st.columns([1, 0.9, 1.3])
 
-    # --- LAYOUTING UTAMA ---
-    col_basic, col_finding = st.columns([1, 1.2])
-
-    # ================= KOLOM KIRI: BASIC INFORMATION =================
-    with col_basic:
-        st.markdown("<h3 style='background-color: #1e3d59; color: white; padding: 8px; border-radius: 5px;'>Basic Information</h3>", unsafe_allow_html=True)
-        
+    # ================= SLIDE ELEMENT 1: BASIC INFO MASTER =================
+    with col1:
+        st.markdown("<div class='ppt-card-blue'><b style='font-size:15px;'>📋 Site Master Specification</b></div>", unsafe_allow_html=True)
         info_dasar = {
-            "Parameter": ["Site ID (Dapot)", "Site Name", "Site Class", "Grid Category", "Hub Site", "Phase PLN", "Grounding KWH"],
+            "Parameter": ["Site ID", "Site Name", "Class", "Grid", "Hub", "Phase", "Gnd KWH"],
             "Value": [
                 data_site['site_id'] if pd.notna(data_site.get('site_id')) else '-',
                 data_site['site_name'] if pd.notna(data_site.get('site_name')) else '-',
@@ -202,138 +182,98 @@ else:
                 data_site.get('Grounding KWH', '-')
             ]
         }
-        st.table(pd.DataFrame(info_dasar))
+        st.dataframe(pd.DataFrame(info_dasar), hide_index=True, use_container_width=True, height=245)
+
+    # ================= SLIDE ELEMENT 2: POWER GRID METRICS =================
+    with col2:
+        st.markdown("<div class='ppt-card-blue'><b style='font-size:15px;'>⚡ Kelistrikan & Power Grid</b></div>", unsafe_allow_html=True)
         
-        st.markdown("<h4 style='color: #1e3d59;'>Kondisi Kelistrikan & Power</h4>", unsafe_allow_html=True)
-        col_v, col_i = st.columns(2)
-        with col_v:
+        vm1, vm2 = st.columns(2)
+        with vm1:
             st.metric(label="Tegangan R-N", value=f"{data_site.get('Tegangan PLN (R-N)', '-')} V")
             st.metric(label="Tegangan S-N", value=f"{data_site.get('Tegangan PLN (S-N)', '-')} V")
             st.metric(label="Tegangan T-N", value=f"{data_site.get('Tegangan PLN (T-N)', '-')} V")
             st.metric(label="G-N Grounding", value=f"{data_site.get('G-N Grounding ke Netral', '-')} V")
-        with col_i:
+        with vm2:
             st.metric(label="Beban PLN (R)", value=f"{data_site.get('Beban PLN (R)', '-')} A")
             st.metric(label="Beban PLN (S)", value=f"{data_site.get('Beban PLN (S)', '-')} A")
             st.metric(label="Beban PLN (T)", value=f"{data_site.get('Beban PLN (T)', '-')} A")
 
-    # ================= KOLOM KANAN: FINDINGS & INPUT REKOMENDASI =================
-    with col_finding:
-        st.markdown("<h3 style='background-color: #ffc13b; color: #1e3d59; padding: 8px; border-radius: 5px;'>Findings & Hardware Status</h3>", unsafe_allow_html=True)
+    # ================= SLIDE ELEMENT 3: OPERATIONAL FINDINGS & LOG REKOMENDASI =================
+    with col3:
+        st.markdown("<div class='ppt-card-gold'><b>🔍 Field Findings & Action Log</b></div>", unsafe_allow_html=True)
         
-        st.write(f"**Total Arus Rectifier:** {data_site.get('Rectifier Current', '-')} A")
-        st.write(f"**Jumlah Modul Eksisting:** {data_site.get('Jumlah Module', '-')} (Faulty: {data_site.get('Total Module faulty', '-')})")
-        st.write(f"**Backup Time Battery (BBT):** {data_site.get('BBT >4 Jam', '-')}")
-        st.write(f"**Remark MCB ACPDB:** {data_site.get('Remark Kondisi MCB ACPDB', '-')}")
+        # Ringkasan Status Hardware secara padat
+        st.markdown(f"""
+        <div style='font-size:13px; line-height:1.4; margin-bottom:8px;'>
+        • <b>Arus Rectifier:</b> {data_site.get('Rectifier Current', '-')} A | <b>Modul Eksisting:</b> {data_site.get('Jumlah Module', '-')} (Fault: {data_site.get('Total Module faulty', '-')})<br>
+        • <b>Backup Time Batt:</b> {data_site.get('BBT >4 Jam', '-')} | <b>Enva Validasi:</b> {data_site.get('Enva Validasi', '-')}<br>
+        • <b>Kondisi LPU Enva:</b> {data_site.get('Kondisi Modul Enva LPU', '-')} | <b>Arrester Recty:</b> {data_site.get('Arrester Rectifier', '-')}
+        </div>
+        """, unsafe_allow_html=True)
         
-        st.markdown("---")
-        st.markdown("**Status Validasi Lapangan:**")
-        st.write(f"- Enva Validasi: *{data_site.get('Enva Validasi', '-')}*")
-        st.write(f"- Kondisi Modul Enva LPU: *{data_site.get('Kondisi Modul Enva LPU', '-')}*")
-        st.write(f"- Arrester Rectifier: *{data_site.get('Arrester Rectifier', '-')}*")
-        
-        # SEKSI INPUT REKOMENDASI KORLAP
-        st.markdown("---")
-        st.markdown("<h4 style='color: #ffc13b;'>📝 Rekomendasi Koordinator Lapangan</h4>", unsafe_allow_html=True)
-        
+        # Text input rekomendasi korlap yang lebih pendek tingginya biar presisi slide
         rekomendasi_sekarang = data_site.get('Rekomendasi Koordinator', '')
-        if pd.isna(rekomendasi_sekarang):
-            rekomendasi_sekarang = ""
+        if pd.isna(rekomendasi_sekarang): rekomendasi_sekarang = ""
             
-        rekomendasi_input = st.text_area("Input Rekomendasi Tim Korlap di Sini:", 
-                                          value=str(rekomendasi_sekarang), 
-                                          placeholder="Contoh: Replace Arrester Recty...",
-                                          key="input_rekomendasi")
+        rekomendasi_input = st.text_area("Rekomendasi Koordinator Lapangan:", value=str(rekomendasi_sekarang), placeholder="Input tindakan di sini...", key="input_rekomendasi", height=68, label_visibility="collapsed")
         
-        if st.button("💾 Simpan Rekomendasi ke AppSheet", use_container_width=True):
-            if rekomendasi_input.strip() == "":
-                st.warning("Isi kolom rekomendasi terlebih dahulu sebelum disimpan, Zi.")
-            else:
-                with st.spinner("Sedang menyimpan data..."):
-                    site_id_asli_appsheet = data_site[kolom_site_app]
-                    sukses = update_rekomendasi_appsheet(site_id_asli_appsheet, kolom_site_app, rekomendasi_input)
-                    if sukses:
-                        st.success("Rekomendasi berhasil disimpan!")
+        if st.button("💾 Push Update Data", use_container_width=True):
+            if rekomendasi_input.strip() != "":
+                with st.spinner("Pushing..."):
+                    if update_rekomendasi_appsheet(data_site[kolom_site_app], kolom_site_app, rekomendasi_input):
                         st.cache_data.clear()
                         st.rerun()
-                    else:
-                        st.error("Gagal menyimpan data ke AppSheet.")
 
-        # --- DYNAMIC GALLERY SCANNER & CSV DOWNLOADS ---
-        st.markdown("---")
+    # --- ROW 3: FOOTER ROW (GALLERY SCANNER & FILE ATTACHMENTS) ---
+    all_detected_photos = []
+    all_detected_csvs = []
+    seen_urls = set()
+    
+    for col_name in df_app.columns:
+        val = data_site.get(col_name)
+        if pd.isna(val) or not val: continue
+        urls = re.findall(r'(https?://[^\s,"\'\}]+)', str(val))
         
-        st.markdown("""<style>
-        .gallery-container { display: flex; overflow-x: auto; padding: 15px; background-color: #151515; border-radius: 10px; border: 1px solid #333; margin-top: 5px; scroll-behavior: smooth; }
-        .photo-card { flex: 0 0 auto; width: 140px; margin-right: 15px; text-align: center; position: relative; }
-        .hide-checkbox { display: none; }
-        .hide-checkbox:checked + .photo-card { display: none; }
-        .exclude-btn { position: absolute; top: 2px; right: 12px; background: rgba(211, 47, 47, 0.9); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 11px; line-height: 18px; cursor: pointer; font-weight: bold; z-index: 10; box-shadow: 0px 2px 4px rgba(0,0,0,0.5); }
-        .exclude-btn:hover { background: #b71c1c; }
-        .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.95); z-index: 99999; justify-content: center; align-items: center; }
-        .lightbox:target { display: flex; }
-        .lightbox img { max-width: 85%; max-height: 85%; border-radius: 6px; box-shadow: 0px 0px 25px rgba(255,255,255,0.2); }
-        .lightbox .close-lightbox { position: absolute; top: 30px; right: 40px; color: #fff; font-size: 45px; text-decoration: none; font-weight: bold; }
-        </style>""", unsafe_allow_html=True)
-        
-        all_detected_photos = []
-        all_detected_csvs = []
-        seen_urls = set()
-        
-        for col_name in df_app.columns:
-            val = data_site.get(col_name)
-            if pd.isna(val) or not val:
-                continue
-                
-            urls = re.findall(r'(https?://[^\s,"\'\}]+)', str(val))
+        for idx, url in enumerate(urls):
+            if url in seen_urls: continue
+            seen_urls.add(url)
             
-            for idx, url in enumerate(urls):
-                if url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                
-                is_csv = "csv" in col_name.lower() or ".csv" in url.lower() or "data" in col_name.lower()
-                thumb_url, zoom_url, download_url = konversi_link_gdrive(url)
-                label = f"{col_name} #{idx+1}" if len(urls) > 1 else col_name
-                
-                if thumb_url and not is_csv:
-                    all_detected_photos.append({
-                        'label': label, 'col_name': col_name, 'idx': idx, 'thumb_url': thumb_url, 'zoom_url': zoom_url
-                    })
-                elif is_csv:
-                    all_detected_csvs.append({
-                        'label': label, 'download_url': download_url
-                    })
+            is_csv = "csv" in col_name.lower() or ".csv" in url.lower() or "data" in col_name.lower()
+            thumb_url, zoom_url, download_url = konversi_link_gdrive(url)
+            label = f"{col_name} #{idx+1}" if len(urls) > 1 else col_name
+            
+            if thumb_url and not is_csv:
+                all_detected_photos.append({ 'label': label, 'col_name': col_name, 'idx': idx, 'thumb_url': thumb_url, 'zoom_url': zoom_url })
+            elif is_csv:
+                all_detected_csvs.append({ 'label': label, 'download_url': download_url })
 
+    # Tampilkan CSV dan Foto berjajar presisi di bawah
+    st.markdown("<div style='margin-top: 5px; margin-bottom: 2px; font-size:14px;'><b>📁 Attachments & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
+    
+    bot_csv, bot_gal = st.columns([0.8, 2.2])
+    
+    with bot_csv:
         if all_detected_csvs:
-            st.markdown("#### 📊 File Data & CSV Uploads")
             for csv_file in all_detected_csvs:
-                st.link_button(f"📥 Download {csv_file['label']}", csv_file['download_url'], use_container_width=True)
-            st.markdown("---")
+                st.link_button(f"📥 {csv_file['label']}", csv_file['download_url'], use_container_width=True)
+        else:
+            st.caption("No CSV Data uploaded.")
 
-        st.markdown("**📸 Foto Dokumentasi Lapangan (Horizontal Scroll & Click to Pop-up)**")
+    with bot_gal:
         html_items = []
         for p in all_detected_photos:
             safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{p['col_name']}{p['idx']}")
-            
             item_html = f"""<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox">
 <div class="photo-card">
-<label for="hide-{safe_id}" class="exclude-btn" title="Sembunyikan Foto">&times;</label>
-<a href="#lightbox-{safe_id}" title="Klik untuk Pop-up Zoom">
-<img src="{p['thumb_url']}" style="width: 130px; height: 130px; object-fit: cover; border-radius: 8px; box-shadow: 0px 4px 8px rgba(0,0,0,0.4); border: 2px solid #444; cursor: pointer;"/>
-</a>
-<div style="font-size: 11px; margin-top: 6px; color: #e0e0e0; white-space: normal; line-height: 1.2;">{p['label']}</div>
+<label for="hide-{safe_id}" class="exclude-btn" title="Hide">&times;</label>
+<a href="#lightbox-{safe_id}"><img src="{p['thumb_url']}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 4px; border: 1px solid #55幕;"/></a>
+<div style="font-size: 9px; margin-top: 3px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{p['label']}</div>
 </div>
-<div id="lightbox-{safe_id}" class="lightbox">
-<a href="#" class="close-lightbox">&times;</a>
-<img src="{p['zoom_url']}">
-</div>"""
+<div id="lightbox-{safe_id}" class="lightbox"><a href="#" class="close-lightbox">&times;</a><img src="{p['zoom_url']}"></div>"""
             html_items.append(item_html)
-                    
+                
         if html_items:
-            semua_item = "".join(html_items)
-            gallery_html = f"""<div class="gallery-container">
-{semua_item}
-</div>"""
-            st.markdown(gallery_html, unsafe_allow_html=True)
-            st.caption("💡 *Tips: Scroll ke kanan untuk melihat semua foto unik. Klik tombol bulat 'X' merah di atas foto untuk menyembunyikan sementara. Klik gambar untuk Pop-up Zoom.*")
+            st.markdown(f"""<div class="gallery-container">{"".join(html_items)}</div>""", unsafe_allow_html=True)
         else:
-            st.info("Tidak ada dokumentasi foto unik yang ditemukan untuk site ini.")
+            st.caption("No unique documentation photos found.")
