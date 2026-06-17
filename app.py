@@ -1,21 +1,32 @@
 import streamlit as st
 import pandas as pd
 import requests
+import re
 
 # Konfigurasi halaman agar fullscreen dan rapi
 st.set_page_config(layout="wide", page_title="Task Force Dashboard NOP")
 
 # --- HELPER FUNCTION: Konversi Link GDrive agar bisa tampil sebagai gambar ---
 def konversi_link_gdrive(url_mentah):
-    if not url_mentah or not isinstance(url_mentah, str):
+    if not url_mentah or str(url_mentah).strip() == "" or str(url_mentah).lower() == "nan":
         return None
-    # Menangani link gdrive yang berjejer kalau ada multiple link
-    url_mentah = url_mentah.split(",")[0].strip()
-    if "open?id=" in url_mentah:
-        return url_mentah.replace("open?id=", "uc?export=download&id=")
-    if "open?id=" in url_mentah.lower():
-        return url_mentah.replace("id=", "export=download&id=")
-    return url_mentah
+        
+    url_str = str(url_mentah)
+    
+    # KUNCI FIX-NYA: Ambil murni link-nya aja, buang teks "Open Url" atau spasi/enter
+    match = re.search(r'(https?://[^\s,]+)', url_str)
+    if not match:
+        return None
+        
+    link_bersih = match.group(1).strip()
+    
+    # Konversi ke direct download link Drive biar bisa ditampilin di Streamlit
+    if "open?id=" in link_bersih:
+        return link_bersih.replace("open?id=", "uc?export=download&id=")
+    if "Uc?id=" in link_bersih or "uc?id=" in link_bersih:
+        return link_bersih.replace("Uc?id=", "uc?export=download&id=").replace("uc?id=", "uc?export=download&id=")
+        
+    return link_bersih
 
 # --- FUNGSI PULL DATA DARI APPSHEET API ---
 @st.cache_data(ttl=300) # Otomatis refresh data dari AppSheet tiap 5 menit
