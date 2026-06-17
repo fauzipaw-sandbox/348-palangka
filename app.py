@@ -13,8 +13,8 @@ ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
 TABLE_NAME = "List"
 
 # ⚠️ PASTIKAN URL DAN KEY SUPABASE LO YANG SUDAH JALAN TETAP TERPASANG DI SINI!
-SUPABASE_URL = "https://masukin-project-id-lo.supabase.co"
-SUPABASE_KEY = "masukin-anon-key-atau-service-role-key-supabase-lo"
+SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
+SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
 SUPABASE_TABLE = "dapot_data"
 
 # --- Fungsi Standarisasi & Ekstraksi Format Site ID ---
@@ -43,8 +43,9 @@ def konversi_link_gdrive(url_tunggal):
     link_bersih = str(url_tunggal).strip()
     file_id = None
     
-    if "id=" in link_clean := link_bersih:
-        id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_clean)
+    # FIX SYNTAX ERROR: Walrus operator (:=) dihapus total
+    if "id=" in link_bersih:
+        id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_bersih)
         if id_match:
             file_id = id_match.group(1)
     elif "drive.google.com/file/d/" in link_bersih:
@@ -264,10 +265,11 @@ else:
         html_items = []
         for p in all_detected_photos:
             safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{p['col_name']}{p['idx']}")
+            # FIX TYPO: border warna #555 bukan #55幕
             item_html = f"""<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox">
 <div class="photo-card">
 <label for="hide-{safe_id}" class="exclude-btn" title="Hide">&times;</label>
-<a href="#lightbox-{safe_id}"><img src="{p['thumb_url']}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 4px; border: 1px solid #55幕;"/></a>
+<a href="#lightbox-{safe_id}"><img src="{p['thumb_url']}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 4px; border: 1px solid #555;"/></a>
 <div style="font-size: 9px; margin-top: 3px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{p['label']}</div>
 </div>
 <div id="lightbox-{safe_id}" class="lightbox"><a href="#" class="close-lightbox">&times;</a><img src="{p['zoom_url']}"></div>"""
