@@ -23,7 +23,7 @@ def load_data_from_appsheet():
     # Kredensial asli lo
     APP_ID = "d3525213-95f5-4dff-9eb3-62842c4964f0"
     ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
-    TABLE_NAME = "MASUKIN_NAMA_TABEL_LO_DISINI" # <--- GANTI INI DENGAN NAMA TABEL DI APPSHEET
+    TABLE_NAME = "List" # <--- GANTI INI DENGAN NAMA TABEL DI APPSHEET
     
     url = f"https://api.appsheet.com/api/v2/apps/{APP_ID}/tables/{TABLE_NAME}/Action"
     
