@@ -13,8 +13,8 @@ ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
 TABLE_NAME = "List"
 
 # ⚠️ PASTIKAN URL DAN KEY SUPABASE LO YANG SUDAH JALAN TETAP TERPASANG DI SINI!
-SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
-SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
+SUPABASE_URL = "https://masukin-project-id-lo.supabase.co"
+SUPABASE_KEY = "masukin-anon-key-atau-service-role-key-supabase-lo"
 SUPABASE_TABLE = "dapot_data"
 
 # --- Fungsi Standarisasi & Ekstraksi Format Site ID ---
@@ -27,6 +27,15 @@ def format_site_id(site_id):
         return match.group(0)
     s = re.sub(r'^K+P', 'KKP', s)
     return s
+
+# --- Fungsi Pembersih Nama Label Lampiran/Foto ---
+def clean_label_name(name):
+    # Khusus untuk Log Rectifier langsung disingkat
+    if "Log Rectifier" in name: 
+        return "Log Recty"
+    # Menghapus semua teks penjelasan yang ada di dalam kurung ()
+    name_clean = re.sub(r'\s*\(.*?\)\s*', '', str(name))
+    return name_clean.strip()
 
 # --- Fungsi Fuzzy Matching ---
 def cari_site_terdekat(site_appsheet, list_site_supabase):
@@ -43,15 +52,12 @@ def konversi_link_gdrive(url_tunggal):
     link_bersih = str(url_tunggal).strip()
     file_id = None
     
-    # FIX SYNTAX ERROR: Walrus operator (:=) dihapus total
     if "id=" in link_bersih:
         id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_bersih)
-        if id_match:
-            file_id = id_match.group(1)
+        if id_match: file_id = id_match.group(1)
     elif "drive.google.com/file/d/" in link_bersih:
         id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_bersih)
-        if id_match:
-            file_id = id_match.group(1)
+        if id_match: file_id = id_match.group(1)
             
     if file_id:
         thumb_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w400"
@@ -133,9 +139,10 @@ else:
         
     df_merged['dropdown_label'] = df_merged.apply(susun_nama_dropdown, axis=1)
 
-    # --- INJECT CSS CUSTOM UNTUK STYLING PPT PRESENTASI COMPACT ---
+    # --- FIX 3: INJECT CSS CUSTOM UNTUK STYLING PPT PRESENTASI COMPACT ---
+    # padding-top ditambah jadi 3rem agar tidak nabrak top bar Streamlit
     st.markdown("""<style>
-    .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
+    .block-container { padding-top: 3.2rem !important; padding-bottom: 1rem !important; }
     .ppt-header { background-color: #d32f2f; padding: 10px 20px; border-radius: 8px; margin-bottom: 15px; color: white; display: flex; justify-content: space-between; align-items: center; }
     .ppt-card-blue { background-color: #1e3d59; color: white; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #ffc13b; }
     .ppt-card-gold { background-color: #ffc13b; color: #1e3d59; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #1e3d59; }
@@ -149,6 +156,10 @@ else:
     .lightbox img { max-width: 80%; max-height: 80%; border-radius: 4px; }
     .lightbox .close-lightbox { position: absolute; top: 20px; right: 30px; color: #fff; font-size: 40px; text-decoration: none; }
     div[data-testid="stMetric"] { background-color: #262730; padding: 5px 10px; border-radius: 4px; border: 1px solid #444; }
+    
+    /* CSS Tabel Mini untuk Findings */
+    .findings-grid { display: grid; grid-template-columns: auto auto; gap: 8px 15px; background-color: #262730; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; border: 1px solid #444; }
+    .f-item { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 4px; }
     </style>""", unsafe_allow_html=True)
 
     # --- ROW 1: TOP BAR TITLE SLIDE (PPT HEADER) ---
@@ -172,7 +183,7 @@ else:
     with col1:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:15px;'>📋 Site Master Specification</b></div>", unsafe_allow_html=True)
         info_dasar = {
-            "Parameter": ["Site ID", "Site Name", "Class", "Grid", "Hub", "Phase", "Gnd KWH"],
+            "Parameter": ["Site ID", "Site Name", "Class", "Grid", "Hub", "Phase", "Grounding KWH"],
             "Value": [
                 data_site['site_id'] if pd.notna(data_site.get('site_id')) else '-',
                 data_site['site_name'] if pd.notna(data_site.get('site_name')) else '-',
@@ -204,16 +215,18 @@ else:
     with col3:
         st.markdown("<div class='ppt-card-gold'><b>🔍 Field Findings & Action Log</b></div>", unsafe_allow_html=True)
         
-        # Ringkasan Status Hardware secara padat
+        # --- FIX 1: TAMPILAN FINDINGS DIRAPIKAN JADI GRID MINI ---
         st.markdown(f"""
-        <div style='font-size:13px; line-height:1.4; margin-bottom:8px;'>
-        • <b>Arus Rectifier:</b> {data_site.get('Rectifier Current', '-')} A | <b>Modul Eksisting:</b> {data_site.get('Jumlah Module', '-')} (Fault: {data_site.get('Total Module faulty', '-')})<br>
-        • <b>Backup Time Batt:</b> {data_site.get('BBT >4 Jam', '-')} | <b>Enva Validasi:</b> {data_site.get('Enva Validasi', '-')}<br>
-        • <b>Kondisi LPU Enva:</b> {data_site.get('Kondisi Modul Enva LPU', '-')} | <b>Arrester Recty:</b> {data_site.get('Arrester Rectifier', '-')}
+        <div class='findings-grid'>
+            <div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div>
+            <div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div>
+            <div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div>
+            <div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div>
+            <div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div>
+            <div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div>
         </div>
         """, unsafe_allow_html=True)
         
-        # Text input rekomendasi korlap yang lebih pendek tingginya biar presisi slide
         rekomendasi_sekarang = data_site.get('Rekomendasi Koordinator', '')
         if pd.isna(rekomendasi_sekarang): rekomendasi_sekarang = ""
             
@@ -242,14 +255,16 @@ else:
             
             is_csv = "csv" in col_name.lower() or ".csv" in url.lower() or "data" in col_name.lower()
             thumb_url, zoom_url, download_url = konversi_link_gdrive(url)
-            label = f"{col_name} #{idx+1}" if len(urls) > 1 else col_name
+            
+            # --- FIX 2: TERAPKAN FUNGSI PEMBERSIH NAMA DI SINI ---
+            base_label = clean_label_name(col_name)
+            final_label = f"{base_label} #{idx+1}" if len(urls) > 1 else base_label
             
             if thumb_url and not is_csv:
-                all_detected_photos.append({ 'label': label, 'col_name': col_name, 'idx': idx, 'thumb_url': thumb_url, 'zoom_url': zoom_url })
+                all_detected_photos.append({ 'label': final_label, 'col_name': col_name, 'idx': idx, 'thumb_url': thumb_url, 'zoom_url': zoom_url })
             elif is_csv:
-                all_detected_csvs.append({ 'label': label, 'download_url': download_url })
+                all_detected_csvs.append({ 'label': final_label, 'download_url': download_url })
 
-    # Tampilkan CSV dan Foto berjajar presisi di bawah
     st.markdown("<div style='margin-top: 5px; margin-bottom: 2px; font-size:14px;'><b>📁 Attachments & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
     
     bot_csv, bot_gal = st.columns([0.8, 2.2])
@@ -265,12 +280,11 @@ else:
         html_items = []
         for p in all_detected_photos:
             safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{p['col_name']}{p['idx']}")
-            # FIX TYPO: border warna #555 bukan #55幕
             item_html = f"""<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox">
 <div class="photo-card">
 <label for="hide-{safe_id}" class="exclude-btn" title="Hide">&times;</label>
 <a href="#lightbox-{safe_id}"><img src="{p['thumb_url']}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 4px; border: 1px solid #555;"/></a>
-<div style="font-size: 9px; margin-top: 3px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{p['label']}</div>
+<div style="font-size: 10px; margin-top: 4px; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{p['label']}</div>
 </div>
 <div id="lightbox-{safe_id}" class="lightbox"><a href="#" class="close-lightbox">&times;</a><img src="{p['zoom_url']}"></div>"""
             html_items.append(item_html)
