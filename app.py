@@ -53,11 +53,23 @@ def konversi_link_gdrive(url_tunggal):
         return thumb_url, zoom_url, dl_url, embed_url
     return link_bersih, link_bersih, link_bersih, None
 
+# --- REVISI 1 & 2: Logika Deteksi Nilai Teknis dengan Cerdas ---
 def dapatkan_nilai_teknis(row, kolom_sheet, kolom_supabase):
-    val_sheet = row.get(kolom_sheet)
+    # Penyelamat duplikat kolom Baterai di Google Sheet (Pandas otomatis namain .1 belakangnya)
+    val_sheet = None
+    if kolom_sheet in row:
+        val_sheet = row.get(kolom_sheet)
+    elif kolom_sheet == "Type Batteri" and "Type Battery" in row:
+        val_sheet = row.get("Type Battery")
+    elif kolom_sheet == "Type Batteri.1" and "Type Battery 2" in row:
+        val_sheet = row.get("Type Battery 2")
+    elif kolom_sheet == "Type Batteri.1" and "Type Battery.1" in row:
+        val_sheet = row.get("Type Battery.1")
+        
     if pd.notna(val_sheet) and str(val_sheet).strip() not in ["", "-", "nan"]:
         return str(val_sheet).strip()
     
+    # Fallback intip data ke dapot_data Supabase
     val_sup = row.get(f"{kolom_supabase}_dapot") if f"{kolom_supabase}_dapot" in row else row.get(kolom_supabase)
     if pd.notna(val_sup) and str(val_sup).strip() not in ["", "-", "nan"]:
         return str(val_sup).strip()
@@ -198,23 +210,38 @@ else:
                 data_site.get('Grounding KWH', '-')
             ]
         }
-        st.dataframe(pd.DataFrame(master_list), hide_index=True, use_container_width=True, height=350)
+        st.dataframe(pd.DataFrame(master_list), hide_index=True, use_container_width=True, height=280)
 
+    # REVISI 1 & 3: PENYESUAIAN MAP SPEK TEKNIS & PENGHAPUSAN FIXED HEIGHT SCROLLBAR
     with c2:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>⚙️ Site Technical Detailed Specs</b></div>", unsafe_allow_html=True)
         tech_mapping = [
-            ("Main Power", "Main Power", "Main Power"), ("Daya PLN", "Daya PLN", "Daya PLN"), ("Kapasitas MCB", "Kapasitas MCB", "Kapasitas MCB"),
-            ("Tegangan R - N", "Tegangan PLN (R-N)", "Tegangan PLN (R-N)"), ("Tegangan S - N", "Tegangan PLN (S-N)", "Tegangan PLN (S-N)"), ("Tegangan T - N", "Tegangan PLN (T-N)", "Tegangan PLN (T-N)"),
-            ("Arus R", "Beban PLN (R)", "Beban PLN (R)"), ("Arus S", "Beban PLN (S)", "Beban PLN (S)"), ("Arus T", "Beban PLN (T)", "Beban PLN (T)"),
-            ("Type recti 1", "Type Rectifier", "Type Rectifier"), ("Jumlah Module 1", "Jumlah Module", "Jumlah Module"), ("Type batt 1", "Type Battery", "Type Battery"),
-            ("Jumlah batt 1", "Jumlah Battery", "Jumlah Battery"), ("DC Voltage 1", "DC Voltage", "DC Voltage"), ("Load Current 1", "Rectifier Current", "Rectifier Current"),
-            ("Type recti 2", "Type Rectifier 2", "Type Rectifier 2"), ("Jumlah Module 2", "Jumlah Module 2", "Jumlah Module 2"), ("Type batt 2", "Type Battery 2", "Type Battery 2"),
-            ("Jumlah batt 2", "Jumlah Battery 2", "Jumlah Battery 2"), ("Load current recti 2", "Load current recti 2", "Load current recti 2")
+            ("Main Power", "Main Power", "Power Type"), 
+            ("Daya PLN", "Daya PLN", "Capacity"), 
+            ("Kapasitas MCB", "Kapasitas MCB", "Kapasitas MCB"),
+            ("Tegangan R - N", "Tegangan PLN (R-N)", "Tegangan PLN (R-N)"), 
+            ("Tegangan S - N", "Tegangan PLN (S-N)", "Tegangan PLN (S-N)"), 
+            ("Tegangan T - N", "Tegangan PLN (T-N)", "Tegangan PLN (T-N)"),
+            ("Arus R", "Beban PLN (R)", "Beban PLN (R)"), 
+            ("Arus S", "Beban PLN (S)", "Beban PLN (S)"), 
+            ("Arus T", "Beban PLN (T)", "Beban PLN (T)"),
+            ("Type recti 1", "Type Rectifier", "Type Rectifier"), 
+            ("Jumlah Module 1", "Jumlah Module", "Jumlah Module"), 
+            ("Type batt 1", "Type Batteri", "Type Battery"),        # Kolom Pertama di GSheet
+            ("Jumlah batt 1", "Jumlah Battery", "Jumlah Battery"), 
+            ("DC Voltage 1", "DC Voltage", "DC Voltage"), 
+            ("Load Current 1", "Rectifier Current", "Rectifier Current"),
+            ("Type recti 2", "Type Rectifier 2", "Type Rectifier 2"), 
+            ("Jumlah Module 2", "Jumlah Module 2", "Jumlah Module 2"), 
+            ("Type batt 2", "Type Batteri.1", "Type Battery 2"),    # Kolom Kedua di GSheet (Auto .1 oleh Pandas)
+            ("Jumlah batt 2", "Jumlah Battery 2", "Jumlah Battery 2"), 
+            ("Load current recti 2", "Load current recti 2", "Load current recti 2")
         ]
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
-        st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
+        # REVISI 3: height=None dilepas agar tabel memanjang ke bawah responsif tanpa scrollbar ngumpet
+        st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=None)
 
-    # KOLOM 3: FINDINGS & GRAPH (FIXED TANGGAL + TOOLTIP)
+    # KOLOM 3: FINDINGS & GRAPH
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
@@ -243,11 +270,9 @@ else:
             if col_date and col_avail:
                 chart_data = df_trend[[col_date, col_avail]].copy()
                 
-                # FIX 1: Konversi tanggal natural (tanpa membalik bulan dan hari)
                 chart_data[col_date] = pd.to_datetime(chart_data[col_date], errors='coerce')
                 chart_data = chart_data.dropna(subset=[col_date])
                 
-                # FIX 2: Blokir data masa depan (Tanggal melebihi hari ini + 7 hari dibuang)
                 batas_wajar = pd.Timestamp.now() + pd.Timedelta(days=7)
                 chart_data = chart_data[(chart_data[col_date].dt.year > 2000) & (chart_data[col_date] <= batas_wajar)]
                 
@@ -269,7 +294,6 @@ else:
                     chart_data['Target'] = target_val
                     df_altair = chart_data.reset_index(drop=True)
                     
-                    # Fix batasan X-Axis agar pas dengan data (tidak melar)
                     min_date = df_altair[col_date].min().isoformat()
                     max_date = df_altair[col_date].max().isoformat()
                     
@@ -279,7 +303,6 @@ else:
                                 axis=alt.Axis(format='%d %b %Y', labelOverlap=True, title=None))
                     )
                     
-                    # FIX 3: Tambah Tooltip Interaktif pas di-hover
                     line_avail = base.mark_line(color='#00E5FF', strokeWidth=2, interpolate='monotone').encode(
                         y=alt.Y(f'{col_avail}:Q', scale=alt.Scale(zero=False), title='Availability (%)'),
                         tooltip=[
@@ -292,7 +315,7 @@ else:
                         y=alt.Y('Target:Q')
                     )
                     
-                    st.altair_chart(alt.layer(line_avail, line_target).properties(height=155), use_container_width=True)
+                    st.altair_chart(alt.layer(line_avail, line_target).properties(height=260), use_container_width=True)
                 else:
                     st.caption("ℹ️ Data ketersediaan site ini kosong atau format angka tidak valid.")
             else:
@@ -300,12 +323,14 @@ else:
         else: 
             st.caption(f"ℹ️ Belum ada data harian untuk site ini di tabel inap_data.")
 
-    # KOLOM 4: RECOMMENDATION
+    # KOLOM 4: RECOMMENDATION (REVISI 3: DYNAMIC BINDING KEY PENGHANCUR BUG SYNC STATE)
     with c4:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Action Plan</b></div>", unsafe_allow_html=True)
         reko_val = data_site.get('Rekomendasi Perbaikan', '')
         if pd.isna(reko_val): reko_val = ""
-        rekomendasi_input = st.text_area("Rekomendasi Perbaikan:", value=str(reko_val), placeholder="Input rekomendasi...", key="input_rekomendasi", height=230, label_visibility="collapsed")
+        
+        # REVISI 3: Key dibikin dinamis per target site biar isinya otomatis ganti pas lo mindah dropdown dropdown
+        rekomendasi_input = st.text_area("Rekomendasi Perbaikan:", value=str(reko_val), placeholder="Input rekomendasi...", key=f"input_rekomendasi_{t_id_clean}", height=230, label_visibility="collapsed")
         
         @st.dialog("Konfirmasi")
         def popup_konfirmasi(teks):
