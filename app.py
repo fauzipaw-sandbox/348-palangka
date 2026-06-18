@@ -207,8 +207,8 @@ else:
         df_trend = fetch_inap_for_site(t_id_clean, t_id_asli)
             
         if not df_trend.empty:
-            # 1. Prioritaskan nyari kolom "periode", kalau gak ada baru cari tanggal
-            col_date = next((c for c in df_trend.columns if 'periode' in str(c).lower()), None)
+            # 1. Prioritaskan nyari kolom "period", kalau gak ada baru cari tanggal
+            col_date = next((c for c in df_trend.columns if 'period' in str(c).lower()), None)
             if not col_date:
                 col_date = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['date', 'waktu', 'tgl', 'tanggal', 'time', 'timestamp'])), None)
             
