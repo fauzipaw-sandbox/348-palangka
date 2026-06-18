@@ -4,195 +4,261 @@ import requests
 import re
 import difflib
 
-# 1. SETUP PAGE
+# Konfigurasi halaman agar fullscreen, responsif, dan rapi ala slide PPT
 st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
 
 # --- KREDENSIAL & DATA SOURCE MASTER ---
 GOOGLE_SHEET_ID = "1FGKOzWoUrbf3PXN_ahgG1t-83JZT4H4sioQepePbBxM"
 
-# ⚠️ GANTI PAKAI URL APPS SCRIPT LO
+# ⚠️ PASTE URL WEB APP GOOGLE APPS SCRIPT LO DI SINI
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxCQUGt5_Jybed2AwFP4xXFru6GxuMoSwQpUZ63aK9o0WlUFnumOoseRWwgRmxZZ9XYtQ/exec"
 
-# ⚠️ GANTI PAKAI KREDENSIAL SUPABASE LO
+# ⚠️ PASTIKAN URL DAN KEY SUPABASE LO TETAP TERPASANG DI SINI!
 SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
 SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
 SUPABASE_TABLE_DAPOT = "dapot_data"
 SUPABASE_TABLE_INAP = "inap_data"
 
-# --- FUNGSI STANDARISASI SITE ID (SUPER STRICT) ---
+# --- Fungsi Standarisasi & Ekstraksi Format Site ID ---
 def format_site_id(site_id):
     if pd.isna(site_id) or str(site_id).strip() == "": return "-"
-    # Hapus spasi, strip, underscore, dan ubah ke uppercase
-    s = str(site_id).strip().upper()
-    s = re.sub(r'[^A-Z0-9]', '', s)
-    # Ambil 6 digit pertama jika polanya 3 huruf 3 angka (misal KKP326)
+    s = str(site_id).strip().upper().replace(" ", "").replace("-", "").replace("_", "")
     match = re.search(r'[A-Z]{3}\d{3}', s)
     if match: return match.group(0)
-    return s
+    return re.sub(r'^K+P', 'KKP', s)
 
 def clean_label_name(name):
     if "Log Rectifier" in name: return "Log Recty"
     return re.sub(r'\s*\(.*?\)\s*', '', str(name)).strip()
 
-def cari_site_terdekat(site_id, list_site):
-    if site_id == "-": return None
-    cocok = difflib.get_close_matches(site_id, list_site, n=1, cutoff=0.6)
+def cari_site_terdekat(site_appsheet, list_site_supabase):
+    if site_appsheet == "-": return None
+    cocok = difflib.get_close_matches(site_appsheet, list_site_supabase, n=1, cutoff=0.6)
     return cocok[0] if cocok else None
 
 def konversi_link_gdrive(url_tunggal):
     if not url_tunggal or str(url_tunggal).strip() == "": return None, None, None, None
-    link = str(url_tunggal).strip()
-    fid = None
-    if "id=" in link: fid = re.search(r'id=([a-zA-Z0-9_-]+)', link).group(1) if re.search(r'id=([a-zA-Z0-9_-]+)', link) else None
-    elif "file/d/" in link: fid = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link).group(1) if re.search(r'/file/d/([a-zA-Z0-9_-]+)', link) else None
-    if fid:
-        return f"https://drive.google.com/thumbnail?id={fid}&sz=w400", f"https://drive.google.com/thumbnail?id={fid}&sz=w1600", f"https://drive.google.com/uc?export=download&id={fid}", f"https://drive.google.com/file/d/{fid}/preview"
-    return link, link, link, None
+    link_bersih = str(url_tunggal).strip()
+    file_id = None
+    if "id=" in link_bersih:
+        id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_bersih)
+        if id_match: file_id = id_match.group(1)
+    elif "drive.google.com/file/d/" in link_bersih:
+        id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_bersih)
+        if id_match: file_id = id_match.group(1)
+            
+    if file_id:
+        thumb_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w400"
+        zoom_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w1600"
+        dl_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        embed_url = f"https://drive.google.com/file/d/{file_id}/preview"
+        return thumb_url, zoom_url, dl_url, embed_url
+    return link_bersih, link_bersih, link_bersih, None
 
-# --- FUNGSI PUSH DATA ---
-def update_rekomendasi_gsheet(site_id, teks):
-    if "GANTI_PAKE" in APPS_SCRIPT_URL: return False, "URL Apps Script Kosong"
+# --- Fungsi Kirim Update Rekomendasi ke Google Sheet ---
+def update_rekomendasi_gsheet(site_id_asli, teks_rekomendasi):
+    if "GANTI_PAKE_URL" in APPS_SCRIPT_URL: return False, "URL Apps Script belum dipasang!"
     try:
-        response = requests.post(APPS_SCRIPT_URL, json={"site_id": site_id, "rekomendasi": teks}, timeout=10)
-        return (True, "Sukses") if "Sukses" in response.text else (False, response.text)
+        payload = {"site_id": str(site_id_asli).strip(), "rekomendasi": str(teks_rekomendasi).strip()}
+        response = requests.post(APPS_SCRIPT_URL, json=payload, timeout=15)
+        if response.status_code == 200 and "Sukses" in response.text: return True, "Sukses"
+        return False, response.text
     except Exception as e: return False, str(e)
 
-# --- LOAD DATA ---
+# --- FUNGSI PULL DATA ---
 @st.cache_data(ttl=60)
-def load_gsheet():
-    try: return pd.read_csv(f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv")
+def load_data_from_google_sheets():
+    url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv"
+    try: return pd.read_csv(url)
     except: return pd.DataFrame()
 
 @st.cache_data(ttl=600)
-def load_supabase(table):
+def load_data_from_supabase(table_name):
+    url = f"{SUPABASE_URL}/rest/v1/{table_name}?select=*"
+    headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
     try:
-        resp = requests.get(f"{SUPABASE_URL}/rest/v1/{table}?select=*", headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"})
-        return pd.DataFrame(resp.json()) if resp.status_code == 200 else pd.DataFrame()
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200: return pd.DataFrame(response.json())
+        return pd.DataFrame()
     except: return pd.DataFrame()
 
-df_sheet = load_gsheet()
-df_dapot = load_supabase(SUPABASE_TABLE_DAPOT)
-df_inap = load_supabase(SUPABASE_TABLE_INAP)
+df_sheet = load_data_from_google_sheets()
+df_sup_dapot = load_data_from_supabase(SUPABASE_TABLE_DAPOT)
+df_sup_inap = load_data_from_supabase(SUPABASE_TABLE_INAP)
 
-if df_sheet.empty or df_dapot.empty:
-    st.error("Gagal memuat data utama. Pastikan link GSheet & API Key Supabase sudah benar.")
+if df_sheet.empty or df_sup_dapot.empty:
+    st.error("🚨 Gagal memuat data! Cek Google Sheet Access (Anyone with link) & Supabase Credentials.")
 else:
-    # Matching Logic
-    kolom_site_s = 'Site' if 'Site' in df_sheet.columns else df_sheet.columns[0]
-    df_sheet['site_clean'] = df_sheet[kolom_site_s].apply(format_site_id)
-    df_dapot['site_clean'] = df_dapot['site_id'].apply(format_site_id)
+    # Processing Data
+    kolom_site_sheet = 'Site' if 'Site' in df_sheet.columns else ([c for c in df_sheet.columns if "site" in c.lower() or "id" in c.lower()] + [df_sheet.columns[0]])[0]
+    df_sheet['site_clean_sheet'] = df_sheet[kolom_site_sheet].apply(format_site_id)
+    df_sup_dapot['site_clean_sup'] = df_sup_dapot['site_id'].apply(format_site_id)
     
-    list_sup = df_dapot['site_clean'].unique().tolist()
-    mapping = {s: (s if s in list_sup else cari_site_terdekat(s, list_sup)) for s in df_sheet['site_clean'].unique()}
-    df_sheet['matched_id'] = df_sheet['site_clean'].map(mapping)
-    df_merged = pd.merge(df_sheet, df_dapot, left_on='matched_id', right_on='site_clean', how='left', suffixes=('', '_dapot'))
+    list_site_sup = df_sup_dapot['site_clean_sup'].dropna().unique().tolist()
+    mapping_fuzzy = {site_s: (site_s if site_s in list_site_sup else cari_site_terdekat(site_s, list_site_sup)) for site_s in df_sheet['site_clean_sheet'].unique()}
+    df_sheet['matched_site_sup'] = df_sheet['site_clean_sheet'].map(mapping_fuzzy)
+    df_merged = pd.merge(df_sheet, df_sup_dapot, left_on='matched_site_sup', right_on='site_clean_sup', how='left', suffixes=('', '_dapot'))
 
-    # UI HEADER
+    def susun_nama_dropdown(row):
+        s_id = row['matched_site_sup'] if pd.notna(row['matched_site_sup']) else row['site_clean_sheet']
+        s_name = row['site_name'] if pd.notna(row.get('site_name')) else 'UNKNOWN NAME'
+        return f"[{s_id}] ➔ {s_name}"
+        
+    df_merged['dropdown_label'] = df_merged.apply(susun_nama_dropdown, axis=1)
+
+    # --- CSS CUSTOM ---
     st.markdown("""<style>
-    .block-container { padding-top: 3.5rem !important; }
-    .card-blue { background: #1E3D59; padding: 10px; border-radius: 8px; border-left: 5px solid #FFC13B; margin-bottom: 10px; }
-    .card-gold { background: #FFC13B; color: #1E3D59; padding: 10px; border-radius: 8px; border-left: 5px solid #1E3D59; margin-bottom: 10px; }
-    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999999; justify-content: center; align-items: center; flex-direction: column; }
+    .block-container { padding-top: 3.5rem !important; padding-bottom: 0rem !important; }
+    .ppt-card-blue { background-color: #1e3d59; color: white; padding: 10px; border-radius: 6px; margin-bottom: 8px; border-left: 5px solid #ffc13b; }
+    .ppt-card-gold { background-color: #ffc13b; color: #1e3d59; padding: 10px; border-radius: 6px; margin-bottom: 8px; border-left: 5px solid #1e3d59; }
+    .gallery-container { display: flex; overflow-x: auto; padding: 10px; background-color: #111; border-radius: 8px; border: 1px solid #333; }
+    .photo-card { flex: 0 0 auto; width: 110px; margin-right: 12px; text-align: center; position: relative; }
+    .hide-checkbox { display: none; }
+    .hide-checkbox:checked + .photo-card { display: none; }
+    .exclude-btn { position: absolute; top: 1px; right: 8px; background: rgba(211,47,47,0.9); color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; line-height: 16px; cursor: pointer; font-weight: bold; z-index: 10; }
+    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.96); z-index: 99999999 !important; justify-content: center; align-items: center; }
     .lightbox:target { display: flex; }
-    .lightbox img, .lightbox iframe { max-width: 80%; max-height: 70%; border-radius: 10px; }
-    .lightbox .caption { color: #FFC13B; font-size: 20px; font-weight: 700; margin-top: 20px; font-family: 'DM Sans'; }
-    .nav-arrow { position: absolute; top: 50%; color: #FFF; font-size: 60px; text-decoration: none; padding: 20px; z-index: 10000000; }
-    .prev-arrow { left: 30px; } .next-arrow { right: 30px; }
-    .close-lightbox { position: absolute; top: 70px; right: 40px; color: #FFF; font-size: 50px; text-decoration: none; }
-    .gallery-container { display: flex; gap: 10px; overflow-x: auto; padding: 10px; background: #111; border-radius: 10px; }
-    .photo-card { min-width: 110px; height: 80px; position: relative; cursor: pointer; border-radius: 5px; border: 1px solid #444; }
-    .video-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(232,30,40,0.8); border-radius: 50%; width: 25px; height: 25px; text-align: center; color: #FFF; font-size: 12px; line-height: 25px; }
+    .lightbox img, .lightbox iframe { max-width: 80%; max-height: 80%; border-radius: 6px; }
+    .lightbox .close-lightbox { position: absolute; top: 65px; right: 40px; color: #fff; font-size: 45px; text-decoration: none; font-weight: bold; z-index: 99999999 !important; }
+    .lightbox .nav-arrow { position: absolute; top: 50%; color: #fff; font-size: 50px; font-weight: bold; text-decoration: none; transform: translateY(-50%); padding: 20px; z-index: 99999999 !important; text-shadow: 0px 2px 8px #000; }
+    .lightbox .prev-arrow { left: 40px; }
+    .lightbox .next-arrow { right: 40px; }
+    .findings-grid { display: grid; grid-template-columns: auto auto; gap: 6px 12px; background-color: #262730; padding: 10px; border-radius: 6px; font-size: 12px; margin-bottom: 5px; border: 1px solid #444; }
+    .f-item { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 2px; }
+    .custom-footer { text-align: center; font-size: 11px; color: #666; margin-top: 15px; border-top: 1px solid #222; padding-top: 6px; }
+    .video-overlay-btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(211, 47, 47, 0.85); color: white; border-radius: 50%; width: 26px; height: 24px; line-height: 24px; font-size: 11px; font-weight: bold; pointer-events: none; }
     </style>""", unsafe_allow_html=True)
 
-    c_h1, c_h2 = st.columns([2, 1])
-    with c_h1:
-        st.markdown("<div style='background: linear-gradient(135deg, #E81E28 0%, #B71C1C 60%, #1A1A1A 100%); padding: 15px; border-radius: 8px; border-left: 6px solid #FFC13B;'><h2 style='margin:0; color:#FFF;'>🚀 TASKFORCE 348 | NOP Palangkaraya</h2></div>", unsafe_allow_html=True)
-    with c_h2:
-        sel_label = st.selectbox("Target Site:", sorted(df_merged.apply(lambda r: f"[{r['matched_id'] if pd.notna(r['matched_id']) else r['site_clean']}] ➔ {r.get('site_name','UNK')}", axis=1).unique()))
-    
-    data_site = df_merged[df_merged.apply(lambda r: f"[{r['matched_id'] if pd.notna(r['matched_id']) else r['site_clean']}] ➔ {r.get('site_name','UNK')}", axis=1) == sel_label].iloc[0]
+    # --- ROW 1: HEADER ---
+    col_head_title, col_head_select = st.columns([1.8, 1.2])
+    with col_head_title:
+        st.markdown("""<div style='background: linear-gradient(135deg, #ed1c24 0%, #b71c1c 50%, #1a1a1a 100%); padding: 12px 20px; border-radius: 6px; color: white; border-left: 6px solid #ffc13b; box-shadow: 0 4px 6px rgba(0,0,0,0.3);'><h3 style='margin:0; font-size:22px; font-weight:900; letter-spacing: 0.5px;'>🚀 TASK FORCE 348 <span style='color: #ffc13b;'>|</span> NOP PALANGKARAYA</h3><p style='margin: 2px 0 0 0; font-size: 12px; opacity: 0.9; font-weight: 500;'>TELECOMMUNICATION & NETWORK OPERATION DASHBOARD</p></div>""", unsafe_allow_html=True)
+    with col_head_select:
+        label_pilihan = st.selectbox("🎯 Target Monitoring:", sorted(df_merged['dropdown_label'].unique()), label_visibility="collapsed")
 
-    # MAIN CONTENT (4 COLUMNS)
+    data_site = df_merged[df_merged['dropdown_label'] == label_pilihan].iloc[0]
+    st.markdown(f"<p style='text-align: right; margin: -5px 5px 8px 0; font-size: 13px;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
+
+    # --- ROW 2: MAIN GRID (4 COLUMNS) ---
     c1, c2, c3, c4 = st.columns([1, 1.2, 1.2, 1])
 
+    # KOLOM 1: SITE MASTER SPECS
     with c1:
-        st.markdown("<div class='card-blue'><b>📋 Site Master</b></div>", unsafe_allow_html=True)
-        m_list = {"Param": ["ID", "Name", "Class", "Grid", "Hub", "Phase"], "Val": [data_site.get('site_id','-'), data_site.get('site_name','-'), data_site.get('site_class','-'), data_site.get('grid_category_new','-'), data_site.get('hub_site','-'), data_site.get('Phase PLN','-')]}
-        st.table(pd.DataFrame(m_list).set_index('Param'))
+        st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>📋 Site Master Specification</b></div>", unsafe_allow_html=True)
+        master_list = {
+            "Parameter": ["Site ID", "Site Name", "Class", "Grid", "Hub", "Phase", "Grounding KWH"],
+            "Value": [
+                data_site.get('site_id', '-'), data_site.get('site_name', '-'),
+                data_site.get('site_class', '-'), data_site.get('grid_category_new', '-'),
+                data_site.get('hub_site', '-'), data_site.get('Phase PLN', '-'),
+                data_site.get('Grounding KWH', '-')
+            ]
+        }
+        st.dataframe(pd.DataFrame(master_list), hide_index=True, use_container_width=True, height=350)
 
+    # KOLOM 2: TECHNICAL DETAIL (20 ITEMS)
     with c2:
-        st.markdown("<div class='card-blue'><b>⚙️ Technical Detail</b></div>", unsafe_allow_html=True)
-        t_map = [("Main Power","Main Power"), ("Daya PLN","Daya PLN"), ("MCB Cap","Kapasitas MCB"), ("V R-N","Tegangan PLN (R-N)"), ("V S-N","Tegangan PLN (S-N)"), ("V T-N","Tegangan PLN (T-N)"), ("A R","Beban PLN (R)"), ("A S","Beban PLN (S)"), ("A T","Beban PLN (T)"), ("Recti 1","Type Rectifier"), ("Mod 1","Jumlah Module"), ("Batt 1","Type Battery"), ("Qty B1","Jumlah Battery"), ("DC V1","DC Voltage"), ("Load 1","Rectifier Current"), ("Recti 2","Type Rectifier 2"), ("Mod 2","Jumlah Module 2"), ("Batt 2","Type Battery 2"), ("Qty B2","Jumlah Battery 2"), ("Load 2","Load current recti 2")]
-        st.dataframe(pd.DataFrame({"Parameter": [x[0] for x in t_map], "Value": [data_site.get(x[1], '-') for x in t_map]}), hide_index=True, use_container_width=True, height=300)
+        st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>⚙️ Site Technical Detailed Specs</b></div>", unsafe_allow_html=True)
+        tech_mapping = [
+            ("Main Power", "Main Power"), ("Daya PLN", "Daya PLN"), ("Kapasitas MCB", "Kapasitas MCB"),
+            ("Tegangan R-N", "Tegangan PLN (R-N)"), ("Tegangan S-N", "Tegangan PLN (S-N)"), ("Tegangan T-N", "Tegangan PLN (T-N)"),
+            ("Arus R", "Beban PLN (R)"), ("Arus S", "Beban PLN (S)"), ("Arus T", "Beban PLN (T)"),
+            ("Type Recti 1", "Type Rectifier"), ("Module 1", "Jumlah Module"), ("Type Batt 1", "Type Battery"),
+            ("Jumlah Batt 1", "Jumlah Battery"), ("DC Voltage 1", "DC Voltage"), ("Load Current 1", "Rectifier Current"),
+            ("Type Recti 2", "Type Rectifier 2"), ("Module 2", "Jumlah Module 2"), ("Type Batt 2", "Type Battery 2"),
+            ("Jumlah Batt 2", "Jumlah Battery 2"), ("Load Current 2", "Load current recti 2")
+        ]
+        tech_data = {"Detail Parameter": [m[0] for m in tech_mapping], "Value": [data_site.get(m[1], '-') for m in tech_mapping]}
+        st.dataframe(pd.DataFrame(tech_data), hide_index=True, use_container_width=True, height=350)
 
+    # KOLOM 3: FINDINGS & GRAPH
     with c3:
-        st.markdown("<div class='card-gold'><b>🔍 Findings & Trends</b></div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='background:#262730; padding:10px; border-radius:5px; font-size:12px;'><b>Arus:</b> {data_site.get('Rectifier Current','-')} A | <b>Modul:</b> {data_site.get('Jumlah Module','-')} (F:{data_site.get('Total Module faulty','0')})<br><b>BBT:</b> {data_site.get('BBT >4 Jam','-')} | <b>Arrester:</b> {data_site.get('Arrester Rectifier','-')}</div>", unsafe_allow_html=True)
+        st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
+        st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
         
-        # TREND LOGIC
-        if not df_inap.empty:
-            df_inap['sc'] = df_inap['site_id'].astype(str).apply(format_site_id)
-            d_trend = df_inap[df_inap['sc'] == data_site['site_clean']]
-            if not d_trend.empty:
-                cw = [c for c in d_trend.columns if any(x in c.lower() for x in ['week','minggu','date'])][0]
-                cp = [c for c in d_trend.columns if any(x in c.lower() for x in ['power','pwr'])][0]
-                ct = [c for c in d_trend.columns if any(x in c.lower() for x in ['transport','trans'])][0]
-                chart_data = d_trend[[cw, cp, ct]].copy()
-                chart_data.columns = ['Week', 'Power (%)', 'Transport (%)']
-                st.line_chart(chart_data.sort_values('Week').set_index('Week'), height=150)
-            else: st.caption("ℹ️ Trend site ini tidak ditemukan.")
+        st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Weekly Availability Trend (Power & Transport)</b>", unsafe_allow_html=True)
+        if not df_sup_inap.empty:
+            # Pastikan matching menggunakan Site ID yang sudah dibersihkan
+            df_sup_inap['site_clean'] = df_sup_inap['site_id'].astype(str).apply(format_site_id)
+            df_site_avail = df_sup_inap[df_sup_inap['site_clean'] == data_site['site_clean_sheet']]
+            
+            if not df_site_avail.empty:
+                # Cari kolom avail secara cerdas
+                col_w = [c for c in df_site_avail.columns if any(x in c.lower() for x in ['week', 'minggu', 'date'])]
+                col_p = [c for c in df_site_avail.columns if any(x in c.lower() for x in ['power', 'pwr'])]
+                col_t = [c for c in df_site_avail.columns if any(x in c.lower() for x in ['transport', 'trans'])]
+                
+                if col_w and col_p and col_t:
+                    df_chart = df_site_avail[[col_w[0], col_p[0], col_t[0]]].copy()
+                    df_chart.columns = ['Week', 'Power (%)', 'Transport (%)']
+                    df_chart = df_chart.sort_values(by='Week')
+                    st.line_chart(df_chart.set_index('Week'), height=185)
+                else: st.caption("ℹ️ Format kolom inap_data tidak sesuai.")
+            else: st.caption(f"ℹ️ Belum ada data mingguan untuk {data_site['site_clean_sheet']} di inap_data.")
 
+    # KOLOM 4: RECOMMENDATION
     with c4:
-        st.markdown("<div class='card-gold'><b>📝 Action Plan</b></div>", unsafe_allow_html=True)
-        cur_reko = data_site.get('Rekomendasi Perbaikan', '')
-        in_reko = st.text_area("Reko:", value=str(cur_reko) if pd.notna(cur_reko) else "", height=150, label_visibility="collapsed")
+        st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Action Plan</b></div>", unsafe_allow_html=True)
+        reko_val = data_site.get('Rekomendasi Perbaikan', '')
+        if pd.isna(reko_val): reko_val = ""
+        rekomendasi_input = st.text_area("Rekomendasi Perbaikan:", value=str(reko_val), placeholder="Input rekomendasi...", key="input_rekomendasi", height=230, label_visibility="collapsed")
         
         @st.dialog("Konfirmasi")
-        def pop(t):
-            st.write(f"Simpan untuk **{data_site[kolom_site_s]}**?")
-            st.info(f"📝 {t}")
+        def popup_konfirmasi(teks):
+            st.write(f"Simpan rekomendasi untuk site **{data_site[kolom_site_sheet]}**?")
+            st.info(f"📝 {teks}")
             b1, b2 = st.columns(2)
-            if b1.button("Ya"):
-                with st.spinner("Saving..."):
-                    ok, msg = update_rekomendasi_gsheet(data_site[kolom_site_s], t)
-                    if ok: st.success("OK!"); st.cache_data.clear(); st.rerun()
-                    else: st.error(msg)
-            if b2.button("Tidak"): st.rerun()
+            with b1:
+                if st.button("👍 Ya", use_container_width=True):
+                    with st.spinner("Saving..."):
+                        s, p = update_rekomendasi_gsheet(data_site[kolom_site_sheet], teks)
+                        if s: 
+                            st.success("Tersimpan!")
+                            st.cache_data.clear()
+                            st.rerun()
+                        else: st.error(f"Gagal: {p}")
+            with b2:
+                if st.button("❌ Tidak", use_container_width=True): st.rerun()
 
-        if st.button("💾 Save to GSheet", use_container_width=True):
-            if in_reko.strip(): pop(in_reko)
-            else: st.warning("Kosong!")
+        if st.button("💾 Push Update", use_container_width=True):
+            if rekomendasi_input.strip() == "": st.warning("Isi data!")
+            else: popup_konfirmasi(rekomendasi_input)
 
-    # EVIDENCE SECTION
-    st.markdown("<div style='margin-top:10px;'><b>📁 Evidence</b></div>", unsafe_allow_html=True)
-    all_ev, all_csv = [], []
-    v_col = [c for c in df_sheet.columns if "voltage" in c.lower() and "backup" in c.lower()]
+    # --- ROW 3: EVIDENCE ---
+    st.markdown("<div style='margin-top:10px; font-size:14px;'><b>📁 Evidence & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
+    all_photos, all_csvs, seen_urls = [], [], set()
     
-    for c in df_sheet.columns:
-        val = data_site.get(c)
-        if pd.notna(val) and "http" in str(val):
-            urls = re.findall(r'(https?://[^\s,"\'\}]+)', str(val))
-            for i, u in enumerate(urls):
-                thumb, zoom, dl, embed = konversi_link_gdrive(u)
-                is_vid = (v_col and c == v_col[0]) or ".mp4" in u.lower() or ".mov" in u.lower()
-                lbl = f"{clean_label_name(c)} #{i+1}" if len(urls)>1 else clean_label_name(c)
-                if thumb and (".csv" not in u.lower() and ".xlsx" not in u.lower()):
-                    all_ev.append({'lbl': lbl, 'col': c, 'idx': i, 'thumb': thumb, 'zoom': zoom, 'is_vid': is_vid, 'embed': embed})
-                else: all_csv.append({'lbl': lbl, 'url': dl if dl else u})
+    for col_name in df_sheet.columns:
+        val = data_site.get(col_name)
+        if pd.isna(val) or not val: continue
+        urls = re.findall(r'(https?://[^\s,"\'\}]+)', str(val))
+        for idx, url in enumerate(urls):
+            if url in seen_urls: continue
+            seen_urls.add(url)
+            is_csv = "csv" in col_name.lower() or ".csv" in url.lower()
+            is_video = "voltage" in col_name.lower() or ".mp4" in url.lower()
+            thumb_url, zoom_url, dl_url, embed_url = konversi_link_gdrive(url)
+            label = f"{clean_label_name(col_name)} #{idx+1}" if len(urls) > 1 else clean_label_name(col_name)
+            if thumb_url and not is_csv:
+                all_photos.append({'label': label, 'col': col_name, 'idx': idx, 'thumb': thumb_url, 'zoom': zoom_url, 'is_vid': is_video, 'embed': embed_url})
+            elif is_csv: all_csvs.append({'label': label, 'url': dl_url})
 
-    bc, bg = st.columns([0.8, 2.2])
-    with bc:
-        for f in all_csv: st.link_button(f"📥 {f['lbl']}", f['url'], use_container_width=True)
-    with bg:
-        h_str = ""
-        tot = len(all_ev)
-        for i, p in enumerate(all_ev):
-            sid = re.sub(r'[^a-z0-9]', '', f"{p['col']}{p['idx']}")
-            prev = re.sub(r'[^a-z0-9]', '', f"{all_ev[(i-1)%tot]['col']}{all_ev[(i-1)%tot]['idx']}")
-            nxt = re.sub(r'[^a-z0-9]', '', f"{all_ev[(i+1)%tot]['col']}{all_ev[(i+1)%tot]['idx']}")
-            nav = f'<a href="#lightbox-{prev}" class="nav-arrow prev-arrow">❮</a><a href="#lightbox-{nxt}" class="nav-arrow next-arrow">❯</a>'
-            cnt = f'<iframe src="{p["embed"]}" width="80%" height="70%" allow="autoplay"></iframe>' if p['is_vid'] else f'<img src="{p["zoom"]}">'
-            h_str += f'<div class="photo-card" style="background-image:url(\'{p["thumb"]}\');" onclick="location.href=\'#lightbox-{sid}\'">{"<div class=\"video-overlay\">▶</div>" if p["is_vid"] else ""}</div><div id="lightbox-{sid}" class="lightbox"><a href="#" class="close-lightbox">&times;</a>{nav}{cnt}<div class="caption">{p["lbl"]}</div></div>'
-        st.markdown(f'<div class="gallery-container">{h_str}</div>', unsafe_allow_html=True)
+    b_csv, b_gal = st.columns([0.8, 2.2])
+    with b_csv:
+        if all_csvs:
+            for f in all_csvs: st.link_button(f"📥 {f['label']}", f['url'], use_container_width=True)
+        else: st.caption("No CSV Files.")
+    with b_gal:
+        html_str = ""
+        total = len(all_photos)
+        for i, p in enumerate(all_photos):
+            sid = re.sub(r'[^a-zA-Z0-9]', '', f"{p['col']}{p['idx']}")
+            sid_p = re.sub(r'[^a-zA-Z0-9]', '', f"{all_photos[(i-1)%total]['col']}{all_photos[(i-1)%total]['idx']}")
+            sid_n = re.sub(r'[^a-zA-Z0-9]', '', f"{all_photos[(i+1)%total]['col']}{all_photos[(i+1)%total]['idx']}")
+            nav = f'<a href="#lightbox-{sid_p}" class="nav-arrow prev-arrow">❮</a><a href="#lightbox-{sid_n}" class="nav-arrow next-arrow">❯</a>'
+            content = f'<iframe src="{p["embed"]}" width="80%" height="80%" style="border:none; background:#000;" allow="autoplay"></iframe>' if p['is_vid'] else f'<img src="{p["zoom"]}">'
+            ovr = '<div class="video-overlay-btn">▶</div>' if p['is_vid'] else ''
+            html_str += f'<input type="checkbox" id="hide-{sid}" class="hide-checkbox"><div class="photo-card"><label for="hide-{sid}" class="exclude-btn">&times;</label><a href="#lightbox-{sid}"><div style="position:relative;"><img src="{p["thumb"]}" style="width:100px; height:75px; object-fit:cover; border:1px solid #555;"/><div class="video-overlay-btn">{ovr}</div></div></a><div style="font-size:9px; color:#ccc; overflow:hidden;">{p["label"]}</div></div><div id="lightbox-{sid}" class="lightbox"><a href="#" class="close-lightbox">&times;</a>{nav}{content}</div>'
+        if html_str: st.markdown(f'<div class="gallery-container">{html_str}</div>', unsafe_allow_html=True)
 
     st.markdown("<div class='custom-footer'>© 2026 | Created with ❤️ by Fauzi Ramdani - 97122</div>", unsafe_allow_html=True)
