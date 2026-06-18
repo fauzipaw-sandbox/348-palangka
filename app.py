@@ -10,7 +10,7 @@ st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
 
 # --- KREDENSIAL & DATA SOURCE MASTER ---
 GOOGLE_SHEET_ID = "1FGKOzWoUrbf3PXN_ahgG1t-83JZT4H4sioQepePbBxM"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzE7nrprIN_URYlWKlPIgXN53AX-7PglPSNoLaGDUi5OTgrFK-Vax4ie6G8kxOEcGzeKg/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxCQUGt5_Jybed2AwFP4xXFru6GxuMoSwQpUZ63aK9o0WlUFnumOoseRWwgRmxZZ9XYtQ/exec"
 
 SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
 SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
