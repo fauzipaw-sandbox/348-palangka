@@ -88,7 +88,7 @@ def load_data_from_supabase_dapot():
         return pd.DataFrame()
     except: return pd.DataFrame()
 
-# UPGRADE DEWA: Pembuat variasi spasi & pemilah pintar ieq/ilike agar KKP226 dan KKP 226 aman dua-duanya
+# FIX TOTAL: Menggunakan operator resmi PostgREST (.ilike tanpa % untuk exact, .ilike dengan %25 untuk partial)
 def fetch_inap_for_site(site_clean, site_asli):
     variations = set([str(site_clean).strip(), str(site_asli).strip()])
     if site_clean:
@@ -108,8 +108,7 @@ def fetch_inap_for_site(site_clean, site_asli):
         if match_space:
             letters = match_space.group(1)
             digits = match_space.group(2)
-            extended_vars.add(f"{letters} {digits}") # Menambahkan versi spasi tengah: KKP 226
-            
+            extended_vars.add(f"{letters} {digits}") 
             try:
                 short_digits = str(int(digits))
                 if short_digits != digits:
@@ -120,9 +119,11 @@ def fetch_inap_for_site(site_clean, site_asli):
                 
     filters = []
     for v in extended_vars:
-        filters.append(f"site_id.ieq.{v}")
+        # ilike tanpa persen berfungsi sebagai exact match case-insensitive di Supabase
+        filters.append(f"site_id.ilike.{v}")
         if len(v.replace(" ", "")) >= 6:
-            filters.append(f"site_id.ilike.*{v}*")
+            # %25 adalah URL-encoded dari tanda % (wildcard resmi PostgreSQL/Supabase)
+            filters.append(f"site_id.ilike.%25{v}%25")
             
     url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}?or=({','.join(filters)})&limit=1000"
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
@@ -218,7 +219,7 @@ else:
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH
+    # KOLOM 3: FINDINGS & GRAPH (FIXED KRONOLOGIS TIMELINE + SUPABASE OPERATOR)
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
@@ -289,7 +290,7 @@ else:
         else: 
             st.caption(f"ℹ️ Belum ada data harian untuk {t_id_clean} di tabel inap_data.")
 
-# KOLOM 4: RECOMMENDATION
+    # KOLOM 4: RECOMMENDATION
     with c4:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Action Plan</b></div>", unsafe_allow_html=True)
         reko_val = data_site.get('Rekomendasi Perbaikan', '')
