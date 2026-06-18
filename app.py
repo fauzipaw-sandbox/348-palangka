@@ -16,7 +16,7 @@ SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
 SUPABASE_TABLE_DAPOT = "dapot_data"
 SUPABASE_TABLE_INAP = "inap_data"
 
-# --- Fungsi Standarisasi & Ekstraksi Format Site ID (Auto-Zfill) ---
+# --- Fungsi Standarisasi & Ekstraksi Format Site ID ---
 def format_site_id(site_id):
     if pd.isna(site_id) or str(site_id).strip() == "": return "-"
     s = str(site_id).strip().upper().replace(" ", "").replace("-", "").replace("_", "")
@@ -90,7 +90,6 @@ def load_data_from_supabase_dapot():
 # FITUR BARU: Narik inap_data cuma untuk Site yang dipilih (Biar Gak Lemot!)
 def fetch_inap_for_site(site_id):
     if not site_id or site_id == "-": return pd.DataFrame()
-    # Pake ilike biar toleran sama typo huruf besar/kecil di Supabase
     url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}?site_id=ilike.*{site_id}*"
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
     try:
@@ -185,39 +184,46 @@ else:
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH (AVAILABILITY FIX KILAT)
+    # KOLOM 3: FINDINGS & GRAPH (FIXED PANDAS ASTYPE COERCE ERROR)
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
         
         st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Weekly Availability Trend (Power & Transport)</b>", unsafe_allow_html=True)
         
-        # Eksekusi nembak Supabase Khusus Site ID ini aja
-        t_id_clean = format_site_id(data_site.get('site_clean_sheet', ''))
-        df_trend = fetch_inap_for_site(t_id_clean)
+        t_id_asli = str(data_site.get('site_id', '')).strip()
+        t_id_clean = str(data_site.get('site_clean_sheet', '')).strip()
+        
+        df_trend = fetch_inap_for_site(t_id_asli)
+        if df_trend.empty and t_id_asli != t_id_clean:
+            df_trend = fetch_inap_for_site(t_id_clean)
             
         if not df_trend.empty:
-            # PENDETEKSI KOLOM OTOMATIS (Sangat Kebal Typo)
-            col_w = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['week', 'minggu', 'date', 'waktu', 'periode'])), None)
+            col_w = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['week', 'minggu', 'date', 'waktu', 'periode', 'tgl'])), None)
             col_p = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['power', 'pwr', 'pln', 'avail p'])), None)
             col_t = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['transport', 'trans', 'trx', 'tx', 'avail t'])), None)
             
-            # Kalau nama kolom terlalu aneh, paksa cari kolom angka
-            if not col_w and len(df_trend.columns) > 0: col_w = df_trend.columns[0]
-            numeric_cols = df_trend.select_dtypes(include=['number', 'object']).columns.tolist() # Object ikut diambil jaga-jaga kalau isinya "98%"
-            if not col_p and len(numeric_cols) > 1: col_p = numeric_cols[1]
-            if not col_t and len(numeric_cols) > 2: col_t = numeric_cols[2]
+            if not col_w: col_w = df_trend.columns[0]
+            if not col_p and len(df_trend.columns) > 1: col_p = df_trend.columns[1]
+            if not col_t and len(df_trend.columns) > 2: col_t = df_trend.columns[2]
             
             if col_w and col_p and col_t:
                 chart_data = df_trend[[col_w, col_p, col_t]].copy()
-                chart_data[col_p] = chart_data[col_p].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
-                chart_data[col_t] = chart_data[col_t].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
+                
+                # FIX: Menggunakan pd.to_numeric dengan benar untuk menghindari ValueError dari Pandas astype(float)
+                chart_data[col_p] = pd.to_numeric(chart_data[col_p].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce')
+                chart_data[col_t] = pd.to_numeric(chart_data[col_t].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce')
+                
                 chart_data.columns = ['Week', 'Power (%)', 'Transport (%)']
                 st.line_chart(chart_data.sort_values(by='Week').set_index('Week'), height=155)
             else:
-                st.caption(f"ℹ️ Format kolom angka di inap_data tidak cukup untuk grafik.")
+                st.caption(f"ℹ️ Format kolom di inap_data masih tidak cocok.")
+                
+            with st.expander("🛠️ Cek Nama Kolom Asli inap_data"):
+                st.write("Kolom yang ada di database:", df_trend.columns.tolist())
+                st.write("Data mentah:", df_trend.head(2))
         else: 
-            st.caption(f"ℹ️ Belum ada data mingguan untuk {t_id_clean} di tabel inap_data.")
+            st.caption(f"ℹ️ Belum ada data mingguan untuk {t_id_asli} di tabel inap_data.")
 
     # KOLOM 4: RECOMMENDATION
     with c4:
