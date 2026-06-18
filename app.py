@@ -16,12 +16,13 @@ SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
 SUPABASE_TABLE_DAPOT = "dapot_data"
 SUPABASE_TABLE_INAP = "inap_data"
 
-# --- Fungsi Standarisasi & Ekstraksi Format Site ID ---
+# --- Fungsi Standarisasi & Ekstraksi Format Site ID (Dengan ZFILL Super Pintar) ---
 def format_site_id(site_id):
     if pd.isna(site_id) or str(site_id).strip() == "": return "-"
     s = str(site_id).strip().upper().replace(" ", "").replace("-", "").replace("_", "")
-    match = re.search(r'[A-Z]{3}\d{3}', s)
-    if match: return match.group(0)
+    # Format otomatis KKN75 jadi KKN075 agar matching sempurna
+    match = re.search(r'([A-Z]{3})(\d+)', s)
+    if match: return f"{match.group(1)}{match.group(2).zfill(3)}"
     return re.sub(r'^K+P', 'KKP', s)
 
 def clean_label_name(name):
@@ -70,7 +71,7 @@ def update_rekomendasi_gsheet(site_id_asli, teks_rekomendasi):
         return False, response.text
     except Exception as e: return False, str(e)
 
-# --- FUNGSI PULL DATA (UPGRADE: PAGINATION LOOP BYPASS LIMIT SUPABASE) ---
+# --- FUNGSI PULL DATA (UPGRADE: PAGINATION LOOP ANTI-KEPOTONG) ---
 @st.cache_data(ttl=60)
 def load_data_from_google_sheets():
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv"
@@ -81,7 +82,7 @@ def load_data_from_google_sheets():
 def load_data_from_supabase(table_name):
     all_data = []
     offset = 0
-    limit = 5000
+    limit = 1000 # Kita akalin batas Supabase dengan narik per 1000 baris
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
     
     # Loop narik data sampai bener-bener habis (gak peduli puluhan ribu baris)
@@ -132,7 +133,7 @@ else:
     .hide-checkbox { display: none; }
     .hide-checkbox:checked + .photo-card { display: none; }
     .exclude-btn { position: absolute; top: 1px; right: 8px; background: rgba(211,47,47,0.9); color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; line-height: 16px; cursor: pointer; font-weight: bold; z-index: 10; }
-    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.96); z-index: 9999999; justify-content: center; align-items: center; }
+    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999999; justify-content: center; align-items: center; }
     .lightbox:target { display: flex; }
     .lightbox img, .lightbox iframe { max-width: 80%; max-height: 80%; border-radius: 6px; box-shadow: 0px 5px 25px rgba(0,0,0,0.5); }
     .lightbox .close-lightbox { position: absolute; top: 20px; right: 40px; color: #fff; font-size: 40px; text-decoration: none; font-weight: bold; z-index: 99999999; text-shadow: 0px 2px 5px #000; }
@@ -159,6 +160,7 @@ else:
     # --- ROW 2: MAIN GRID (4 COLUMNS) ---
     c1, c2, c3, c4 = st.columns([1, 1.2, 1.2, 1])
 
+    # KOLOM 1: SITE MASTER SPECS
     with c1:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>📋 Site Master Specification</b></div>", unsafe_allow_html=True)
         master_list = {
@@ -172,21 +174,38 @@ else:
         }
         st.dataframe(pd.DataFrame(master_list), hide_index=True, use_container_width=True, height=350)
 
+    # KOLOM 2: TECHNICAL DETAIL (20 ITEMS WITH FALLBACK TO SUPABASE)
     with c2:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>⚙️ Site Technical Detailed Specs</b></div>", unsafe_allow_html=True)
         tech_mapping = [
-            ("Main Power", "Main Power", "Main Power"), ("Daya PLN", "Daya PLN", "Daya PLN"), ("Kapasitas MCB", "Kapasitas MCB", "Kapasitas MCB"),
-            ("Tegangan R - N", "Tegangan PLN (R-N)", "Tegangan PLN (R-N)"), ("Tegangan S - N", "Tegangan PLN (S-N)", "Tegangan PLN (S-N)"), ("Tegangan T - N", "Tegangan PLN (T-N)", "Tegangan PLN (T-N)"),
-            ("Arus R", "Beban PLN (R)", "Beban PLN (R)"), ("Arus S", "Beban PLN (S)", "Beban PLN (S)"), ("Arus T", "Beban PLN (T)", "Beban PLN (T)"),
-            ("Type recti 1", "Type Rectifier", "Type Rectifier"), ("Jumlah Module 1", "Jumlah Module", "Jumlah Module"), ("Type batt 1", "Type Battery", "Type Battery"),
-            ("Jumlah batt 1", "Jumlah Battery", "Jumlah Battery"), ("DC Voltage 1", "DC Voltage", "DC Voltage"), ("Load Current 1", "Rectifier Current", "Rectifier Current"),
-            ("Type recti 2", "Type Rectifier 2", "Type Rectifier 2"), ("Jumlah Module 2", "Jumlah Module 2", "Jumlah Module 2"), ("Type batt 2", "Type Battery 2", "Type Battery 2"),
-            ("Jumlah batt 2", "Jumlah Battery 2", "Jumlah Battery 2"), ("Load current recti 2", "Load current recti 2", "Load current recti 2")
+            ("Main Power", "Main Power", "Main Power"), 
+            ("Daya PLN", "Daya PLN", "Daya PLN"), 
+            ("Kapasitas MCB", "Kapasitas MCB", "Kapasitas MCB"),
+            ("Tegangan R - N", "Tegangan PLN (R-N)", "Tegangan PLN (R-N)"), 
+            ("Tegangan S - N", "Tegangan PLN (S-N)", "Tegangan PLN (S-N)"), 
+            ("Tegangan T - N", "Tegangan PLN (T-N)", "Tegangan PLN (T-N)"),
+            ("Arus R", "Beban PLN (R)", "Beban PLN (R)"), 
+            ("Arus S", "Beban PLN (S)", "Beban PLN (S)"), 
+            ("Arus T", "Beban PLN (T)", "Beban PLN (T)"),
+            ("Type recti 1", "Type Rectifier", "Type Rectifier"), 
+            ("Jumlah Module 1", "Jumlah Module", "Jumlah Module"), 
+            ("Type batt 1", "Type Battery", "Type Battery"),
+            ("Jumlah batt 1", "Jumlah Battery", "Jumlah Battery"), 
+            ("DC Voltage 1", "DC Voltage", "DC Voltage"), 
+            ("Load Current 1", "Rectifier Current", "Rectifier Current"),
+            ("Type recti 2", "Type Rectifier 2", "Type Rectifier 2"), 
+            ("Jumlah Module 2", "Jumlah Module 2", "Jumlah Module 2"), 
+            ("Type batt 2", "Type Battery 2", "Type Battery 2"),
+            ("Jumlah batt 2", "Jumlah Battery 2", "Jumlah Battery 2"), 
+            ("Load current recti 2", "Load current recti 2", "Load current recti 2")
         ]
-        tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
+        tech_rows = []
+        for label, col_sheet, col_sub in tech_mapping:
+            final_val = dapatkan_nilai_teknis(data_site, col_sheet, col_sub)
+            tech_rows.append({"Detail Parameter": label, "Value": final_val})
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH
+    # KOLOM 3: FINDINGS & GRAPH (FIXED TREND AVAILABILITY)
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
@@ -194,7 +213,6 @@ else:
         st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Weekly Availability Trend (Power & Transport)</b>", unsafe_allow_html=True)
         
         if not df_sup_inap.empty:
-            # PENDETEKSI KOLOM SITE ID ANTI-MELESET
             inap_site_col = None
             for c in df_sup_inap.columns:
                 if str(c).lower().strip() in ['site_id', 'site id', 'id site', 'site']:
@@ -222,7 +240,6 @@ else:
                     else: st.caption(f"ℹ️ Format kolom di inap_data tidak cocok.")
                 else: 
                     st.caption(f"ℹ️ Belum ada data mingguan untuk {target_sheet} di inap_data.")
-                    # DEBUGGER
                     with st.expander("🛠️ Debugger"):
                         st.write("Site IDs di Supabase inap_data:", df_sup_inap['site_clean'].dropna().unique()[:10])
             else: st.caption("ℹ️ Tidak menemukan kolom 'site_id' di tabel inap_data.")
@@ -254,7 +271,7 @@ else:
             if rekomendasi_input.strip() == "": st.warning("Isi data!")
             else: popup_konfirmasi(rekomendasi_input)
 
-    # --- ROW 3: EVIDENCE ---
+    # --- ROW 3: EVIDENCE SECURE & CAPTION POPUP ---
     st.markdown("<div style='margin-top:10px; font-size:14px;'><b>📁 Evidence & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
     all_photos, all_csvs, seen_urls = [], [], set()
     
