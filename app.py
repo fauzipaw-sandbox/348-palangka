@@ -34,7 +34,6 @@ def cari_site_terdekat(site_appsheet, list_site_supabase):
     cocok = difflib.get_close_matches(site_appsheet, list_site_supabase, n=1, cutoff=0.6)
     return cocok[0] if cocok else None
 
-# TYPO FIX: Nama fungsi dikembalikan ke 'konversi_link_gdrive' tanpa huruf 's'
 def konversi_link_gdrive(url_tunggal):
     if not url_tunggal or str(url_tunggal).strip() == "": return None, None, None, None
     link_bersih = str(url_tunggal).strip()
@@ -89,7 +88,7 @@ def load_data_from_supabase_dapot():
         return pd.DataFrame()
     except: return pd.DataFrame()
 
-# FITUR: Pencarian Multi-Varian dengan Filter .ieq (Exact Match Case Insensitive)
+# UPGRADE DEWA: Pembuat variasi spasi & pemilah pintar ieq/ilike agar KKP226 dan KKP 226 aman dua-duanya
 def fetch_inap_for_site(site_clean, site_asli):
     variations = set([str(site_clean).strip(), str(site_asli).strip()])
     if site_clean:
@@ -99,8 +98,33 @@ def fetch_inap_for_site(site_clean, site_asli):
     valid_vars = [v for v in variations if v not in ["", "-", "nan"]]
     if not valid_vars: return pd.DataFrame()
     
-    filters = ",".join([f"site_id.ieq.{v}" for v in valid_vars])
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}?or=({filters})&limit=1000"
+    extended_vars = set()
+    for v in valid_vars:
+        extended_vars.add(v)
+        clean_v = v.replace(" ", "")
+        extended_vars.add(clean_v)
+        
+        match_space = re.search(r'([A-Z]{2,4})(\d+)', clean_v)
+        if match_space:
+            letters = match_space.group(1)
+            digits = match_space.group(2)
+            extended_vars.add(f"{letters} {digits}") # Menambahkan versi spasi tengah: KKP 226
+            
+            try:
+                short_digits = str(int(digits))
+                if short_digits != digits:
+                    extended_vars.add(f"{letters}{short_digits}")
+                    extended_vars.add(f"{letters} {short_digits}")
+            except:
+                pass
+                
+    filters = []
+    for v in extended_vars:
+        filters.append(f"site_id.ieq.{v}")
+        if len(v.replace(" ", "")) >= 6:
+            filters.append(f"site_id.ilike.*{v}*")
+            
+    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}?or=({','.join(filters)})&limit=1000"
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
     try:
         res = requests.get(url, headers=headers, timeout=10)
@@ -194,7 +218,7 @@ else:
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH (FIXED EXACT SINKRONISASI + SMOOTH ALTAIR)
+    # KOLOM 3: FINDINGS & GRAPH
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
@@ -265,7 +289,7 @@ else:
         else: 
             st.caption(f"ℹ️ Belum ada data harian untuk {t_id_clean} di tabel inap_data.")
 
-    # KOLOM 4: RECOMMENDATION
+# KOLOM 4: RECOMMENDATION
     with c4:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Action Plan</b></div>", unsafe_allow_html=True)
         reko_val = data_site.get('Rekomendasi Perbaikan', '')
