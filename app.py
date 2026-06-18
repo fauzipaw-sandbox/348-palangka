@@ -72,7 +72,6 @@ def dapatkan_nilai_teknis(row, kolom_sheet, kolom_supabase):
         return str(val_sup).strip()
     return "-"
 
-# FITUR BARU: Push Action Plan dan Finding sekaligus
 def update_action_finding_gsheet(site_id_asli, teks_rekomendasi, teks_finding):
     try:
         payload = {
@@ -358,23 +357,25 @@ else:
         else: 
             st.caption(f"ℹ️ Belum ada data harian untuk site ini di tabel inap_data.")
 
-    # KOLOM 4: FINDINGS & ACTION PLAN
+    # KOLOM 4: FINDINGS & ACTION PLAN DENGAN FUZZY MATCH
     with c4:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Findings & Action Plan</b></div>", unsafe_allow_html=True)
         
-        # 1. Input untuk Remark Temuan by RTS (Finding)
-        finding_val = data_site.get('Remark Temuan by RTS', '')
+        # 1. PENCARIAN CERDAS KOLOM FINDING & TAMPILANNYA
+        kolom_finding = next((c for c in df_sheet.columns if "remark" in str(c).lower() and "temuan" in str(c).lower()), 'Remark Temuan by RTS')
+        finding_val = data_site.get(kolom_finding, '')
         if pd.isna(finding_val): finding_val = ""
         st_finding_input = st.text_area(
             "🔍 Remark Temuan by RTS:", 
             value=str(finding_val), 
-            placeholder="Tulis Final Finding di baris pertama (misal: Tidak ada finding)\n\n1. Detail kondisi battery OK\n2. Pengecekan module OK...", 
+            placeholder="Tulis Final Finding di baris pertama...\n\n1. Detail Kondisi...", 
             key=f"input_finding_{t_id_clean}", 
             height=180
         )
         
-        # 2. Input untuk Rekomendasi
-        reko_val = data_site.get('Rekomendasi Perbaikan', '')
+        # 2. PENCARIAN CERDAS KOLOM REKOMENDASI & TAMPILANNYA
+        kolom_reko = next((c for c in df_sheet.columns if "rekomendasi" in str(c).lower()), 'Rekomendasi Perbaikan')
+        reko_val = data_site.get(kolom_reko, '')
         if pd.isna(reko_val): reko_val = ""
         st_rekomendasi_input = st.text_area(
             "📝 Rekomendasi Perbaikan:", 
