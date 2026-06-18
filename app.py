@@ -34,7 +34,8 @@ def cari_site_terdekat(site_appsheet, list_site_supabase):
     cocok = difflib.get_close_matches(site_appsheet, list_site_supabase, n=1, cutoff=0.6)
     return cocok[0] if cocok else None
 
-def konversions_link_gdrive(url_tunggal):
+# TYPO FIX: Nama fungsi dikembalikan ke 'konversi_link_gdrive' tanpa huruf 's'
+def konversi_link_gdrive(url_tunggal):
     if not url_tunggal or str(url_tunggal).strip() == "": return None, None, None, None
     link_bersih = str(url_tunggal).strip()
     file_id = None
@@ -88,7 +89,7 @@ def load_data_from_supabase_dapot():
         return pd.DataFrame()
     except: return pd.DataFrame()
 
-# FIX SAKLEK: Menggunakan filter exact case-insensitive (.ieq) agar data tidak bercampur dengan site lain
+# FITUR: Pencarian Multi-Varian dengan Filter .ieq (Exact Match Case Insensitive)
 def fetch_inap_for_site(site_clean, site_asli):
     variations = set([str(site_clean).strip(), str(site_asli).strip()])
     if site_clean:
@@ -98,7 +99,6 @@ def fetch_inap_for_site(site_clean, site_asli):
     valid_vars = [v for v in variations if v not in ["", "-", "nan"]]
     if not valid_vars: return pd.DataFrame()
     
-    # Menggunakan ieq untuk pencarian exact match murni tanpa wildcard asteris
     filters = ",".join([f"site_id.ieq.{v}" for v in valid_vars])
     url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}?or=({filters})&limit=1000"
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
@@ -249,7 +249,6 @@ else:
                         x=alt.X(f'{col_date}:T', axis=alt.Axis(format='%d %b', title=None))
                     )
                     
-                    # FIX GRAPH SMOOTH: Ditambahkan interpolate='monotone' agar kurva garis melengkung rapi
                     line_avail = base.mark_line(color='#00E5FF', strokeWidth=2, interpolate='monotone').encode(
                         y=alt.Y(f'{col_avail}:Q', scale=alt.Scale(zero=False), title='Availability (%)')
                     )
