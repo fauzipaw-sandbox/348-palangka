@@ -35,13 +35,13 @@ def cari_site_terdekat(site_appsheet, list_site_supabase):
 
 def konversi_link_gdrive(url_tunggal):
     if not url_tunggal or str(url_tunggal).strip() == "": return None, None, None, None
-    link_transform = str(url_tunggal).strip()
+    link_bersih = str(url_tunggal).strip()
     file_id = None
-    if "id=" in link_transform:
-        id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_transform)
+    if "id=" in link_bersih:
+        id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_bersih)
         if id_match: file_id = id_match.group(1)
-    elif "drive.google.com/file/d/" in link_transform:
-        id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_transform)
+    elif "drive.google.com/file/d/" in link_bersih:
+        id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_bersih)
         if id_match: file_id = id_match.group(1)
             
     if file_id:
@@ -50,7 +50,7 @@ def konversi_link_gdrive(url_tunggal):
         dl_url = f"https://drive.google.com/uc?export=download&id={file_id}"
         embed_url = f"https://drive.google.com/file/d/{file_id}/preview"
         return thumb_url, zoom_url, dl_url, embed_url
-    return link_transform, link_transform, link_transform, None
+    return link_bersih, link_bersih, link_bersih, None
 
 def dapatkan_nilai_teknis(row, kolom_sheet, kolom_supabase):
     val_sheet = row.get(kolom_sheet)
@@ -87,9 +87,21 @@ def load_data_from_supabase_dapot():
         return pd.DataFrame()
     except: return pd.DataFrame()
 
-def fetch_inap_for_site(site_id):
-    if not site_id or site_id == "-": return pd.DataFrame()
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}?site_id=ilike.*{site_id}*"
+# FITUR: Pencarian Multi-Varian (KKN075 & KKN75 sekaligus)
+def fetch_inap_for_site(site_clean, site_asli):
+    variations = set([str(site_clean).strip(), str(site_asli).strip()])
+    
+    # Kalau polanya ada 0 di tengah (Contoh: KKN075), bikin variasi tanpa 0 (KKN75)
+    if site_clean:
+        match = re.search(r'([A-Z]+)0+(\d+)', site_clean)
+        if match: variations.add(f"{match.group(1)}{match.group(2)}")
+            
+    valid_vars = [v for v in variations if v not in ["", "-", "nan"]]
+    if not valid_vars: return pd.DataFrame()
+    
+    # Bikin filter "ATAU" untuk menembak semua kemungkinan nama ID di Supabase
+    filters = ",".join([f"site_id.ilike.*{v}*" for v in valid_vars])
+    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}?or=({filters})&limit=1000"
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
     try:
         res = requests.get(url, headers=headers, timeout=10)
@@ -183,7 +195,7 @@ else:
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH (PERBAIKAN ULTRA RESILIENT WEEKLY AGGREGATION)
+    # KOLOM 3: FINDINGS & GRAPH (FIX TANGGAL EXCEL 1969 & WEEKLY AGGREGATION)
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
@@ -193,17 +205,14 @@ else:
         t_id_asli = str(data_site.get('site_id', '')).strip()
         t_id_clean = str(data_site.get('site_clean_sheet', '')).strip()
         
-        df_trend = fetch_inap_for_site(t_id_asli)
-        if df_trend.empty and t_id_asli != t_id_clean:
-            df_trend = fetch_inap_for_site(t_id_clean)
+        # Eksekusi pencarian Supabase Multi-Varian
+        df_trend = fetch_inap_for_site(t_id_clean, t_id_asli)
             
         if not df_trend.empty:
-            # 1. Logika Cari Kolom Tanggal (Sangat Fleksibel)
             col_date = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['date', 'waktu', 'periode', 'tgl', 'tanggal', 'time', 'timestamp'])), None)
-            if not col_date and len(df_trend.columns) > 0:
-                col_date = df_trend.columns[0] # Ambil kolom pertama sebagai fallback jika mentok
+            if not col_date and len(df_trend.columns) > 0: col_date = df_trend.columns[0]
             
-            # 2. Logika Cari Kolom Availability Murni (Bukan power/transport)
+            # Deteksi Kolom Availability (Cuma ambil 1 line)
             col_avail = None
             for c in df_trend.columns:
                 c_lower = str(c).lower()
@@ -211,45 +220,55 @@ else:
                     col_avail = c
                     break
             
-            # Fallback jika kolomnya cuma bernama "availability" atau sejenisnya tanpa variasi lain
             if not col_avail:
                 col_avail = next((c for c in df_trend.columns if 'avail' in str(c).lower()), None)
-            # Last Fallback: Jika pencarian teks gagal total, ambil kolom kedua yang ada di tabel lo, Zi!
             if not col_avail and len(df_trend.columns) > 1:
                 col_avail = df_trend.columns[1] if df_trend.columns[1] != col_date else df_trend.columns[0]
 
             if col_date and col_avail:
                 chart_data = df_trend[[col_date, col_avail]].copy()
                 
-                # Konversi Tanggal secara aman ke Datetime
-                chart_data[col_date] = pd.to_datetime(chart_data[col_date], errors='coerce')
+                # --- FUNGSI PEMBERSIH TANGGAL (MEMBLOKIR TAHUN 1969/1970) ---
+                def bersihkan_tanggal(val):
+                    v_str = str(val).strip()
+                    # Deteksi kalau datanya cuma berisi angka Excel (misal: 45000)
+                    if v_str.replace('.', '', 1).isdigit():
+                        try: return pd.to_datetime(float(v_str), unit='D', origin='1899-12-30')
+                        except: return pd.NaT
+                    return pd.to_datetime(v_str, errors='coerce', dayfirst=True)
+                
+                chart_data[col_date] = chart_data[col_date].apply(bersihkan_tanggal)
                 chart_data = chart_data.dropna(subset=[col_date])
                 
-                # Bersihkan Teks persen (%) atau koma dari data angka menggunakan pd.to_numeric resmi
+                # Filter ekstrem: Buang tanggal yang tahunnya masih di bawah 2000 (Menghapus bug tahun 1969 Epoch)
+                chart_data = chart_data[chart_data[col_date].dt.year > 2000]
+                
+                # --- PEMBERSIH ANGKA KETERSEDIAAN ---
                 chart_data[col_avail] = chart_data[col_avail].astype(str).str.replace('%', '').str.replace(',', '.')
                 chart_data[col_avail] = pd.to_numeric(chart_data[col_avail], errors='coerce')
                 chart_data = chart_data.dropna(subset=[col_avail])
                 
                 if not chart_data.empty:
-                    # Agregasi data harian menjadi mingguan (Senin ke Minggu)
+                    # Rata-rata Mingguan (Hitung dari Senin)
                     chart_data['Week'] = chart_data[col_date].dt.to_period('W').apply(lambda r: r.start_time)
                     weekly_chart = chart_data.groupby('Week')[col_avail].mean().reset_index()
                     
-                    # Set index waktu agar garis grafik terurut secara kronologis otomatis
+                    # Ubah format sumbu X jadi "14 Jun 2026"
+                    weekly_chart['Week'] = weekly_chart['Week'].dt.strftime('%d %b %Y')
                     weekly_chart.set_index('Week', inplace=True)
                     weekly_chart.columns = ['Availability (%)']
                     
                     st.line_chart(weekly_chart, height=155)
                 else:
-                    st.caption("ℹ️ Data angka ketersediaan site ini kosong atau tidak valid.")
+                    st.caption("ℹ️ Data angka ketersediaan atau tanggal pada site ini kosong/tidak valid.")
             else:
-                st.caption("ℹ️ Format kolom tanggal atau availability tidak ditemukan.")
+                st.caption(f"ℹ️ Format kolom tanggal atau availability tidak ditemukan.")
                 
             with st.expander("🛠️ Cek Nama Kolom Asli inap_data"):
                 st.write("Kolom database:", df_trend.columns.tolist())
                 st.write("Data mentah:", df_trend.head(2))
         else: 
-            st.caption(f"ℹ️ Belum ada data untuk {t_id_asli} di tabel inap_data.")
+            st.caption(f"ℹ️ Belum ada data mingguan untuk {t_id_clean} di tabel inap_data.")
 
     # KOLOM 4: RECOMMENDATION
     with c4:
