@@ -10,7 +10,7 @@ st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
 
 # --- KREDENSIAL & DATA SOURCE MASTER ---
 GOOGLE_SHEET_ID = "1FGKOzWoUrbf3PXN_ahgG1t-83JZT4H4sioQepePbBxM"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxCQUGt5_Jybed2AwFP4xXFru6GxuMoSwQpUZ63aK9o0WlUFnumOoseRWwgRmxZZ9XYtQ/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzE7nrprIN_URYlWKlPIgXN53AX-7PglPSNoLaGDUi5OTgrFK-Vax4ie6G8kxOEcGzeKg/exec"
 
 SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
 SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
@@ -72,9 +72,14 @@ def dapatkan_nilai_teknis(row, kolom_sheet, kolom_supabase):
         return str(val_sup).strip()
     return "-"
 
-def update_rekomendasi_gsheet(site_id_asli, teks_rekomendasi):
+# FITUR BARU: Push Action Plan dan Finding sekaligus
+def update_action_finding_gsheet(site_id_asli, teks_rekomendasi, teks_finding):
     try:
-        payload = {"site_id": str(site_id_asli).strip(), "rekomendasi": str(teks_rekomendasi).strip()}
+        payload = {
+            "site_id": str(site_id_asli).strip(), 
+            "rekomendasi": str(teks_rekomendasi).strip(),
+            "finding": str(teks_finding).strip()
+        }
         response = requests.post(APPS_SCRIPT_URL, json=payload, timeout=15)
         if response.status_code == 200 and "Sukses" in response.text: return True, "Sukses"
         return False, response.text
@@ -201,7 +206,6 @@ else:
     data_site = df_merged[df_merged['dropdown_label'] == label_pilihan].iloc[0]
     st.markdown(f"<p style='text-align: right; margin: -10px 5px 8px 0; font-size: 13px;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
 
-    # FIX: Pindahkan definisi ID ke atas sebelum diakses oleh widget di kolom mana pun!
     t_id_asli = str(data_site.get('site_id', '')).strip()
     t_id_clean = str(data_site.get('site_clean_sheet', '')).strip()
 
@@ -354,31 +358,49 @@ else:
         else: 
             st.caption(f"ℹ️ Belum ada data harian untuk site ini di tabel inap_data.")
 
+    # KOLOM 4: FINDINGS & ACTION PLAN
     with c4:
-        st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Action Plan</b></div>", unsafe_allow_html=True)
+        st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Findings & Action Plan</b></div>", unsafe_allow_html=True)
+        
+        # 1. Input untuk Remark Temuan by RTS (Finding)
+        finding_val = data_site.get('Remark Temuan by RTS', '')
+        if pd.isna(finding_val): finding_val = ""
+        st_finding_input = st.text_area(
+            "🔍 Remark Temuan by RTS:", 
+            value=str(finding_val), 
+            placeholder="Tulis Final Finding di baris pertama (misal: Tidak ada finding)\n\n1. Detail kondisi battery OK\n2. Pengecekan module OK...", 
+            key=f"input_finding_{t_id_clean}", 
+            height=180
+        )
+        
+        # 2. Input untuk Rekomendasi
         reko_val = data_site.get('Rekomendasi Perbaikan', '')
         if pd.isna(reko_val): reko_val = ""
+        st_rekomendasi_input = st.text_area(
+            "📝 Rekomendasi Perbaikan:", 
+            value=str(reko_val), 
+            placeholder="Input rekomendasi...", 
+            key=f"input_reko_{t_id_clean}", 
+            height=180
+        )
         
-        rekomendasi_input = st.text_area("Rekomendasi Perbaikan:", value=str(reko_val), placeholder="Input rekomendasi...", key=f"input_rekomendasi_{t_id_clean}", height=230, label_visibility="collapsed")
-        
-        @st.dialog("Konfirmasi")
-        def popup_konfirmasi(teks):
-            st.write(f"Simpan rekomendasi untuk site **{data_site[kolom_site_sheet]}**?")
-            st.info(f"📝 {teks}")
+        @st.dialog("Konfirmasi Update")
+        def popup_konfirmasi(teks_find, teks_reko):
+            st.write(f"Simpan update data untuk site **{data_site[kolom_site_sheet]}**?")
+            st.info(f"**🔍 Finding:**\n{teks_find}\n\n**📝 Rekomendasi:**\n{teks_reko}")
             b1, b2 = st.columns(2)
             with b1:
-                if st.button("👍 Ya", use_container_width=True):
+                if st.button("👍 Ya, Simpan", use_container_width=True):
                     with st.spinner("Saving..."):
-                        s, p = update_rekomendasi_gsheet(data_site[kolom_site_sheet], teks)
+                        s, p = update_action_finding_gsheet(data_site[kolom_site_sheet], teks_reko, teks_find)
                         if s: 
                             st.success("Tersimpan!"); st.cache_data.clear(); st.rerun()
                         else: st.error(f"Gagal: {p}")
             with b2:
-                if st.button("❌ Tidak", use_container_width=True): st.rerun()
+                if st.button("❌ Batal", use_container_width=True): st.rerun()
 
-        if st.button("💾 Push Update", use_container_width=True):
-            if rekomendasi_input.strip() == "": st.warning("Isi data!")
-            else: popup_konfirmasi(rekomendasi_input)
+        if st.button("💾 Push Update Data", use_container_width=True):
+            popup_konfirmasi(st_finding_input, st_rekomendasi_input)
 
     # --- ROW 3: EVIDENCE SECURE & CAPTION POPUP ---
     st.markdown("<div style='margin-top:10px; font-size:14px;'><b>📁 Evidence & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
