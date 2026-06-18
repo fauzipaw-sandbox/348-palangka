@@ -16,13 +16,12 @@ SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
 SUPABASE_TABLE_DAPOT = "dapot_data"
 SUPABASE_TABLE_INAP = "inap_data"
 
-# --- Fungsi Standarisasi & Ekstraksi Format Site ID (Dengan ZFILL Super Pintar) ---
+# --- Fungsi Standarisasi & Ekstraksi Format Site ID ---
 def format_site_id(site_id):
     if pd.isna(site_id) or str(site_id).strip() == "": return "-"
     s = str(site_id).strip().upper().replace(" ", "").replace("-", "").replace("_", "")
-    # Format otomatis KKN75 jadi KKN075 agar matching sempurna
-    match = re.search(r'([A-Z]{3})(\d+)', s)
-    if match: return f"{match.group(1)}{match.group(2).zfill(3)}"
+    match = re.search(r'[A-Z]{3}\d{3}', s)
+    if match: return match.group(0)
     return re.sub(r'^K+P', 'KKP', s)
 
 def clean_label_name(name):
@@ -71,7 +70,7 @@ def update_rekomendasi_gsheet(site_id_asli, teks_rekomendasi):
         return False, response.text
     except Exception as e: return False, str(e)
 
-# --- FUNGSI PULL DATA (UPGRADE: PAGINATION LOOP ANTI-KEPOTONG) ---
+# --- FUNGSI PULL DATA MASTER ---
 @st.cache_data(ttl=60)
 def load_data_from_google_sheets():
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv"
@@ -79,30 +78,29 @@ def load_data_from_google_sheets():
     except: return pd.DataFrame()
 
 @st.cache_data(ttl=600)
-def load_data_from_supabase(table_name):
-    all_data = []
-    offset = 0
-    limit = 1000 # Kita akalin batas Supabase dengan narik per 1000 baris
+def load_data_from_supabase_master(table_name):
+    url = f"{SUPABASE_URL}/rest/v1/{table_name}?select=*&limit=3000"
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
-    
-    # Loop narik data sampai bener-bener habis (gak peduli puluhan ribu baris)
-    while True:
-        url = f"{SUPABASE_URL}/rest/v1/{table_name}?select=*&limit={limit}&offset={offset}"
-        try:
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                data = response.json()
-                if not data: break
-                all_data.extend(data)
-                if len(data) < limit: break
-                offset += limit
-            else: break
-        except: break
-    return pd.DataFrame(all_data)
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200: return pd.DataFrame(response.json())
+        return pd.DataFrame()
+    except: return pd.DataFrame()
+
+# OPTIMASI: Fungsi baru khusus narik trend murni milik Target Site terpilih (Server-side Filter!)
+@st.cache_data(ttl=60)
+def load_trend_per_site_from_supabase(site_id_asli, site_id_clean):
+    headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
+    # Gunakan logika OR pada parameter REST API Supabase
+    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}?or=(site_id.eq.{site_id_asli},site_id.eq.{site_id_clean})"
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200: return pd.DataFrame(response.json())
+        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 df_sheet = load_data_from_google_sheets()
-df_sup_dapot = load_data_from_supabase(SUPABASE_TABLE_DAPOT)
-df_sup_inap = load_data_from_supabase(SUPABASE_TABLE_INAP)
+df_sup_dapot = load_data_from_supabase_master(SUPABASE_TABLE_DAPOT)
 
 if df_sheet.empty or df_sup_dapot.empty:
     st.error("🚨 Gagal memuat data utama! Cek Google Sheet Access & Supabase Credentials.")
@@ -160,7 +158,6 @@ else:
     # --- ROW 2: MAIN GRID (4 COLUMNS) ---
     c1, c2, c3, c4 = st.columns([1, 1.2, 1.2, 1])
 
-    # KOLOM 1: SITE MASTER SPECS
     with c1:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>📋 Site Master Specification</b></div>", unsafe_allow_html=True)
         master_list = {
@@ -174,76 +171,56 @@ else:
         }
         st.dataframe(pd.DataFrame(master_list), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 2: TECHNICAL DETAIL (20 ITEMS WITH FALLBACK TO SUPABASE)
     with c2:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>⚙️ Site Technical Detailed Specs</b></div>", unsafe_allow_html=True)
         tech_mapping = [
-            ("Main Power", "Main Power", "Main Power"), 
-            ("Daya PLN", "Daya PLN", "Daya PLN"), 
-            ("Kapasitas MCB", "Kapasitas MCB", "Kapasitas MCB"),
-            ("Tegangan R - N", "Tegangan PLN (R-N)", "Tegangan PLN (R-N)"), 
-            ("Tegangan S - N", "Tegangan PLN (S-N)", "Tegangan PLN (S-N)"), 
-            ("Tegangan T - N", "Tegangan PLN (T-N)", "Tegangan PLN (T-N)"),
-            ("Arus R", "Beban PLN (R)", "Beban PLN (R)"), 
-            ("Arus S", "Beban PLN (S)", "Beban PLN (S)"), 
-            ("Arus T", "Beban PLN (T)", "Beban PLN (T)"),
-            ("Type recti 1", "Type Rectifier", "Type Rectifier"), 
-            ("Jumlah Module 1", "Jumlah Module", "Jumlah Module"), 
-            ("Type batt 1", "Type Battery", "Type Battery"),
-            ("Jumlah batt 1", "Jumlah Battery", "Jumlah Battery"), 
-            ("DC Voltage 1", "DC Voltage", "DC Voltage"), 
-            ("Load Current 1", "Rectifier Current", "Rectifier Current"),
-            ("Type recti 2", "Type Rectifier 2", "Type Rectifier 2"), 
-            ("Jumlah Module 2", "Jumlah Module 2", "Jumlah Module 2"), 
-            ("Type batt 2", "Type Battery 2", "Type Battery 2"),
-            ("Jumlah batt 2", "Jumlah Battery 2", "Jumlah Battery 2"), 
-            ("Load current recti 2", "Load current recti 2", "Load current recti 2")
+            ("Main Power", "Main Power", "Main Power"), ("Daya PLN", "Daya PLN", "Daya PLN"), ("Kapasitas MCB", "Kapasitas MCB", "Kapasitas MCB"),
+            ("Tegangan R - N", "Tegangan PLN (R-N)", "Tegangan PLN (R-N)"), ("Tegangan S - N", "Tegangan PLN (S-N)", "Tegangan PLN (S-N)"), ("Tegangan T - N", "Tegangan PLN (T-N)", "Tegangan PLN (T-N)"),
+            ("Arus R", "Beban PLN (R)", "Beban PLN (R)"), ("Arus S", "Beban PLN (S)", "Beban PLN (S)"), ("Arus T", "Beban PLN (T)", "Beban PLN (T)"),
+            ("Type recti 1", "Type Rectifier", "Type Rectifier"), ("Jumlah Module 1", "Jumlah Module", "Jumlah Module"), ("Type batt 1", "Type Battery", "Type Battery"),
+            ("Jumlah batt 1", "Jumlah Battery", "Jumlah Battery"), ("DC Voltage 1", "DC Voltage", "DC Voltage"), ("Load Current 1", "Rectifier Current", "Rectifier Current"),
+            ("Type recti 2", "Type Rectifier 2", "Type Rectifier 2"), ("Jumlah Module 2", "Jumlah Module 2", "Jumlah Module 2"), ("Type batt 2", "Type Battery 2", "Type Battery 2"),
+            ("Jumlah batt 2", "Jumlah Battery 2", "Jumlah Battery 2"), ("Load current recti 2", "Load current recti 2", "Load current recti 2")
         ]
-        tech_rows = []
-        for label, col_sheet, col_sub in tech_mapping:
-            final_val = dapatkan_nilai_teknis(data_site, col_sheet, col_sub)
-            tech_rows.append({"Detail Parameter": label, "Value": final_val})
+        tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH (FIXED TREND AVAILABILITY)
+    # KOLOM 3: FINDINGS & GRAPH (OPTIMASI TINGKAT DEWA)
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
         
         st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Weekly Availability Trend (Power & Transport)</b>", unsafe_allow_html=True)
         
-        if not df_sup_inap.empty:
-            inap_site_col = None
-            for c in df_sup_inap.columns:
-                if str(c).lower().strip() in ['site_id', 'site id', 'id site', 'site']:
-                    inap_site_col = c
-                    break
+        # Ambil data instan ter-filter murni milik site ini aja via Supabase server-side query
+        id_asli = str(data_site.get('site_id', ''))
+        id_clean = format_site_id(data_site.get('site_clean_sheet', ''))
+        df_site_avail = load_trend_per_site_from_supabase(id_asli, id_clean)
+        
+        if not df_site_avail.empty:
+            # Perluas pendeteksi keyword kolom biar kebal typo / nama aneh
+            col_w = [c for c in df_site_avail.columns if any(x in str(c).lower() for x in ['week', 'minggu', 'date', 'waktu', 'periode', 'timestamp', 'created_at'])]
+            col_p = [c for c in df_site_avail.columns if any(x in str(c).lower() for x in ['power', 'pwr', 'pow', 'pln', 'avail p'])]
+            col_t = [c for c in df_site_avail.columns if any(x in str(c).lower() for x in ['transport', 'trans', 'trn', 'trsp', 'tsl', 'avail t'])]
             
-            if inap_site_col:
-                df_sup_inap['site_clean'] = df_sup_inap[inap_site_col].astype(str).apply(format_site_id)
-                target_site = format_site_id(data_site.get('site_id', ''))
-                target_sheet = format_site_id(data_site.get('site_clean_sheet', ''))
-                
-                d_trend = df_sup_inap[(df_sup_inap['site_clean'] == target_site) | (df_sup_inap['site_clean'] == target_sheet)]
-                
-                if not d_trend.empty:
-                    col_w = [c for c in d_trend.columns if any(x in str(c).lower() for x in ['week', 'minggu', 'date', 'waktu', 'periode'])]
-                    col_p = [c for c in d_trend.columns if any(x in str(c).lower() for x in ['power', 'pwr', 'avail p'])]
-                    col_t = [c for c in d_trend.columns if any(x in str(c).lower() for x in ['transport', 'trans', 'avail t'])]
-                    
-                    if col_w and col_p and col_t:
-                        chart_data = d_trend[[col_w[0], col_p[0], col_t[0]]].copy()
-                        chart_data[col_p[0]] = chart_data[col_p[0]].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
-                        chart_data[col_t[0]] = chart_data[col_t[0]].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
-                        chart_data.columns = ['Week', 'Power (%)', 'Transport (%)']
-                        st.line_chart(chart_data.sort_values(by='Week').set_index('Week'), height=155)
-                    else: st.caption(f"ℹ️ Format kolom di inap_data tidak cocok.")
-                else: 
-                    st.caption(f"ℹ️ Belum ada data mingguan untuk {target_sheet} di inap_data.")
-                    with st.expander("🛠️ Debugger"):
-                        st.write("Site IDs di Supabase inap_data:", df_sup_inap['site_clean'].dropna().unique()[:10])
-            else: st.caption("ℹ️ Tidak menemukan kolom 'site_id' di tabel inap_data.")
-        else: st.caption("ℹ️ Gagal memuat tabel inap_data dari Supabase.")
+            # Sistem penyelamat otomatis jika deteksi string gagal total (Ambil semua kolom angka sisa)
+            if not col_w: 
+                col_w = [c for c in df_site_avail.columns if str(c).lower().strip() not in ['id', 'site_id', 'site_clean']]
+            if not col_p or not col_t:
+                all_nums = [c for c in df_site_avail.select_dtypes(include=['number']).columns if str(c).lower().strip() not in ['id', 'site_id']]
+                if len(all_nums) >= 2:
+                    if not col_p: col_p = [all_nums[0]]
+                    if not col_t: col_t = [all_nums[1]]
+            
+            if col_w and col_p and col_t:
+                chart_data = df_site_avail[[col_w[0], col_p[0], col_t[0]]].copy()
+                chart_data[col_p[0]] = chart_data[col_p[0]].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
+                chart_data[col_t[0]] = chart_data[col_t[0]].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
+                chart_data.columns = ['Week', 'Power (%)', 'Transport (%)']
+                st.line_chart(chart_data.sort_values(by='Week').set_index('Week'), height=155)
+            else: st.caption(f"ℹ️ Format kolom di inap_data tidak cocok.")
+        else: 
+            st.caption(f"ℹ️ Belum ada data mingguan untuk {id_clean} di inap_data Supabase.")
 
     # KOLOM 4: RECOMMENDATION
     with c4:
@@ -271,7 +248,7 @@ else:
             if rekomendasi_input.strip() == "": st.warning("Isi data!")
             else: popup_konfirmasi(rekomendasi_input)
 
-    # --- ROW 3: EVIDENCE SECURE & CAPTION POPUP ---
+    # --- ROW 3: EVIDENCE ---
     st.markdown("<div style='margin-top:10px; font-size:14px;'><b>📁 Evidence & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
     all_photos, all_csvs, seen_urls = [], [], set()
     
