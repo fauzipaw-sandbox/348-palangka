@@ -87,7 +87,6 @@ def load_data_from_supabase_dapot():
         return pd.DataFrame()
     except: return pd.DataFrame()
 
-# FITUR BARU: Narik inap_data cuma untuk Site yang dipilih (Biar Gak Lemot!)
 def fetch_inap_for_site(site_id):
     if not site_id or site_id == "-": return pd.DataFrame()
     url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}?site_id=ilike.*{site_id}*"
@@ -184,12 +183,12 @@ else:
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH (FIXED PANDAS ASTYPE COERCE ERROR)
+    # KOLOM 3: FINDINGS & GRAPH (PERBAIKAN WEEKLY AVAILABILITY)
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
         
-        st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Weekly Availability Trend (Power & Transport)</b>", unsafe_allow_html=True)
+        st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Weekly Availability Trend</b>", unsafe_allow_html=True)
         
         t_id_asli = str(data_site.get('site_id', '')).strip()
         t_id_clean = str(data_site.get('site_clean_sheet', '')).strip()
@@ -199,31 +198,49 @@ else:
             df_trend = fetch_inap_for_site(t_id_clean)
             
         if not df_trend.empty:
-            col_w = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['week', 'minggu', 'date', 'waktu', 'periode', 'tgl'])), None)
-            col_p = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['power', 'pwr', 'pln', 'avail p'])), None)
-            col_t = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['transport', 'trans', 'trx', 'tx', 'avail t'])), None)
+            # 1. Cari kolom tanggal/periode
+            col_date = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['date', 'waktu', 'periode', 'tgl', 'tanggal', 'time'])), None)
             
-            if not col_w: col_w = df_trend.columns[0]
-            if not col_p and len(df_trend.columns) > 1: col_p = df_trend.columns[1]
-            if not col_t and len(df_trend.columns) > 2: col_t = df_trend.columns[2]
+            # 2. Cari kolom Availability (Hanya yang mengandung 'avail' tapi BUKAN power/transport)
+            col_avail = None
+            for c in df_trend.columns:
+                c_lower = str(c).lower()
+                if 'avail' in c_lower and 'power' not in c_lower and 'pwr' not in c_lower and 'trans' not in c_lower:
+                    col_avail = c
+                    break
             
-            if col_w and col_p and col_t:
-                chart_data = df_trend[[col_w, col_p, col_t]].copy()
+            # Fallback jika nama kolomnya cuma "availability" murni
+            if not col_avail:
+                col_avail = next((c for c in df_trend.columns if 'avail' in str(c).lower()), None)
                 
-                # FIX: Menggunakan pd.to_numeric dengan benar untuk menghindari ValueError dari Pandas astype(float)
-                chart_data[col_p] = pd.to_numeric(chart_data[col_p].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce')
-                chart_data[col_t] = pd.to_numeric(chart_data[col_t].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce')
+            if col_date and col_avail:
+                df_chart = df_trend[[col_date, col_avail]].copy()
                 
-                chart_data.columns = ['Week', 'Power (%)', 'Transport (%)']
-                st.line_chart(chart_data.sort_values(by='Week').set_index('Week'), height=155)
+                # Konversi Tanggal Asli
+                df_chart[col_date] = pd.to_datetime(df_chart[col_date], errors='coerce')
+                df_chart = df_chart.dropna(subset=[col_date])
+                
+                # Bersihkan Angka
+                df_chart[col_avail] = pd.to_numeric(df_chart[col_avail].astype(str).str.replace('%', '').str.replace(',', '.'), errors='coerce')
+                
+                # Agregasi Mingguan (Senin ke Minggu)
+                df_chart['Week'] = df_chart[col_date].dt.to_period('W').apply(lambda r: r.start_time)
+                weekly_chart = df_chart.groupby('Week')[col_avail].mean().reset_index()
+                
+                # Format Tampilan Tanggal
+                weekly_chart['Week'] = weekly_chart['Week'].dt.strftime('%d %b %Y') 
+                weekly_chart.set_index('Week', inplace=True)
+                weekly_chart.columns = ['Availability (%)']
+                
+                st.line_chart(weekly_chart, height=155)
             else:
-                st.caption(f"ℹ️ Format kolom di inap_data masih tidak cocok.")
+                st.caption(f"ℹ️ Format kolom tanggal atau availability tidak ditemukan.")
                 
             with st.expander("🛠️ Cek Nama Kolom Asli inap_data"):
-                st.write("Kolom yang ada di database:", df_trend.columns.tolist())
+                st.write("Kolom database:", df_trend.columns.tolist())
                 st.write("Data mentah:", df_trend.head(2))
         else: 
-            st.caption(f"ℹ️ Belum ada data mingguan untuk {t_id_asli} di tabel inap_data.")
+            st.caption(f"ℹ️ Belum ada data untuk {t_id_asli} di tabel inap_data.")
 
     # KOLOM 4: RECOMMENDATION
     with c4:
