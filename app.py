@@ -8,12 +8,13 @@ import difflib
 st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
 
 # --- KREDENSIAL & DATA SOURCE MASTER ---
+# ID baru dari link Google Sheet yang lo kasih udah terpasang di sini
 GOOGLE_SHEET_ID = "1FGKOzWoUrbf3PXN_ahgG1t-83JZT4H4sioQepePbBxM"
 
-# ⚠️ ISI KREDENSIAL SUPABASE LO YANG ASLI DI SINI YAA!
+# ⚠️ ISI KREDENSIAL SUPABASE LO YANG ASLI DI SINI LAGI YAA, ZI!
 SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
 SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
-SUPABASE_TABLE = "dapot_data" # Ganti jadi dapot_site kalau emang itu namanya
+SUPABASE_TABLE = "dapot_data" # Ganti jadi dapot_site kalau emang itu nama tabel lo
 
 # --- Fungsi Standarisasi & Ekstraksi Format Site ID ---
 def format_site_id(site_id):
@@ -45,14 +46,14 @@ def konversi_link_gdrive(url_tunggal):
     if not url_tunggal or str(url_tunggal).strip() == "":
         return None, None, None
         
-    link_bersih = str(url_tunggal).strip()
+    link_inter = str(url_tunggal).strip()
     file_id = None
     
-    if "id=" in link_bersih:
-        id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_bersih)
+    if "id=" in link_inter:
+        id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_inter)
         if id_match: file_id = id_match.group(1)
-    elif "drive.google.com/file/d/" in link_bersih:
-        id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_bersih)
+    elif "drive.google.com/file/d/" in link_inter:
+        id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_inter)
         if id_match: file_id = id_match.group(1)
             
     if file_id:
@@ -61,7 +62,7 @@ def konversi_link_gdrive(url_tunggal):
         direct_download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
         return thumb_url, zoom_url, direct_download_url
         
-    return link_bersih, link_bersih, link_bersih
+    return link_inter, link_inter, link_inter
 
 # --- FUNGSI PULL DATA LANGSUNG DARI GOOGLE SHEETS VIA CSV EXPORT ---
 @st.cache_data(ttl=300)
@@ -115,7 +116,7 @@ else:
         
     df_merged['dropdown_label'] = df_merged.apply(susun_nama_dropdown, axis=1)
 
-    # --- INJECT CSS CUSTOM UNTUK STYLING PPT PRESENTASI COMPACT ---
+    # --- INJECT CSS CUSTOM ---
     st.markdown("""<style>
     .block-container { padding-top: 3.2rem !important; padding-bottom: 1rem !important; }
     .ppt-card-blue { background-color: #1e3d59; color: white; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #ffc13b; }
@@ -191,7 +192,7 @@ else:
             st.metric(label="Tegangan T-N", value=f"{data_site.get('Tegangan PLN (T-N)', '-')} V")
             st.metric(label="G-N Grounding", value=f"{data_site.get('G-N Grounding ke Netral', '-')} V")
             
-        if direct_video_url and "drive.google.com" in direct_video_url or "id=" in str(url_video_mentah):
+        if direct_video_url and ("drive.google.com" in direct_video_url or "id=" in str(url_video_mentah)):
             st.video(direct_video_url)
         else:
             st.caption("ℹ️ *No voltage backup video clip uploaded.*")
