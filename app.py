@@ -52,7 +52,6 @@ def konversi_link_gdrive(url_tunggal):
         return thumb_url, zoom_url, dl_url, embed_url
     return link_bersih, link_bersih, link_bersih, None
 
-# --- Fungsi Pintar Deteksi Nilai dengan Fallback ke Supabase dapot_data ---
 def dapatkan_nilai_teknis(row, kolom_sheet, kolom_supabase):
     val_sheet = row.get(kolom_sheet)
     if pd.notna(val_sheet) and str(val_sheet).strip() not in ["", "-", "nan"]:
@@ -61,7 +60,6 @@ def dapatkan_nilai_teknis(row, kolom_sheet, kolom_supabase):
     val_sup = row.get(f"{kolom_supabase}_dapot") if f"{kolom_supabase}_dapot" in row else row.get(kolom_supabase)
     if pd.notna(val_sup) and str(val_sup).strip() not in ["", "-", "nan"]:
         return str(val_sup).strip()
-        
     return "-"
 
 def update_rekomendasi_gsheet(site_id_asli, teks_rekomendasi):
@@ -72,7 +70,7 @@ def update_rekomendasi_gsheet(site_id_asli, teks_rekomendasi):
         return False, response.text
     except Exception as e: return False, str(e)
 
-# --- FUNGSI PULL DATA (BYPASS 1000 LIMIT) ---
+# --- FUNGSI PULL DATA (UPGRADE: PAGINATION LOOP BYPASS LIMIT SUPABASE) ---
 @st.cache_data(ttl=60)
 def load_data_from_google_sheets():
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv"
@@ -81,20 +79,32 @@ def load_data_from_google_sheets():
 
 @st.cache_data(ttl=600)
 def load_data_from_supabase(table_name):
-    url = f"{SUPABASE_URL}/rest/v1/{table_name}?select=*&limit=10000"
+    all_data = []
+    offset = 0
+    limit = 5000
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
-    try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200: return pd.DataFrame(response.json())
-        return pd.DataFrame()
-    except: return pd.DataFrame()
+    
+    # Loop narik data sampai bener-bener habis (gak peduli puluhan ribu baris)
+    while True:
+        url = f"{SUPABASE_URL}/rest/v1/{table_name}?select=*&limit={limit}&offset={offset}"
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                if not data: break
+                all_data.extend(data)
+                if len(data) < limit: break
+                offset += limit
+            else: break
+        except: break
+    return pd.DataFrame(all_data)
 
 df_sheet = load_data_from_google_sheets()
 df_sup_dapot = load_data_from_supabase(SUPABASE_TABLE_DAPOT)
 df_sup_inap = load_data_from_supabase(SUPABASE_TABLE_INAP)
 
 if df_sheet.empty or df_sup_dapot.empty:
-    st.error("🚨 Gagal memuat data! Cek Google Sheet Access (Anyone with link) & Supabase Credentials.")
+    st.error("🚨 Gagal memuat data utama! Cek Google Sheet Access & Supabase Credentials.")
 else:
     kolom_site_sheet = 'Site' if 'Site' in df_sheet.columns else ([c for c in df_sheet.columns if "site" in c.lower() or "id" in c.lower()] + [df_sheet.columns[0]])[0]
     df_sheet['site_clean_sheet'] = df_sheet[kolom_site_sheet].apply(format_site_id)
@@ -122,7 +132,7 @@ else:
     .hide-checkbox { display: none; }
     .hide-checkbox:checked + .photo-card { display: none; }
     .exclude-btn { position: absolute; top: 1px; right: 8px; background: rgba(211,47,47,0.9); color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; line-height: 16px; cursor: pointer; font-weight: bold; z-index: 10; }
-    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999999; justify-content: center; align-items: center; }
+    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.96); z-index: 9999999; justify-content: center; align-items: center; }
     .lightbox:target { display: flex; }
     .lightbox img, .lightbox iframe { max-width: 80%; max-height: 80%; border-radius: 6px; box-shadow: 0px 5px 25px rgba(0,0,0,0.5); }
     .lightbox .close-lightbox { position: absolute; top: 20px; right: 40px; color: #fff; font-size: 40px; text-decoration: none; font-weight: bold; z-index: 99999999; text-shadow: 0px 2px 5px #000; }
@@ -149,7 +159,6 @@ else:
     # --- ROW 2: MAIN GRID (4 COLUMNS) ---
     c1, c2, c3, c4 = st.columns([1, 1.2, 1.2, 1])
 
-    # KOLOM 1: SITE MASTER SPECS
     with c1:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>📋 Site Master Specification</b></div>", unsafe_allow_html=True)
         master_list = {
@@ -163,38 +172,21 @@ else:
         }
         st.dataframe(pd.DataFrame(master_list), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 2: TECHNICAL DETAIL (20 ITEMS WITH FALLBACK TO SUPABASE)
     with c2:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>⚙️ Site Technical Detailed Specs</b></div>", unsafe_allow_html=True)
         tech_mapping = [
-            ("Main Power", "Main Power", "Main Power"), 
-            ("Daya PLN", "Daya PLN", "Daya PLN"), 
-            ("Kapasitas MCB", "Kapasitas MCB", "Kapasitas MCB"),
-            ("Tegangan R - N", "Tegangan PLN (R-N)", "Tegangan PLN (R-N)"), 
-            ("Tegangan S - N", "Tegangan PLN (S-N)", "Tegangan PLN (S-N)"), 
-            ("Tegangan T - N", "Tegangan PLN (T-N)", "Tegangan PLN (T-N)"),
-            ("Arus R", "Beban PLN (R)", "Beban PLN (R)"), 
-            ("Arus S", "Beban PLN (S)", "Beban PLN (S)"), 
-            ("Arus T", "Beban PLN (T)", "Beban PLN (T)"),
-            ("Type recti 1", "Type Rectifier", "Type Rectifier"), 
-            ("Jumlah Module 1", "Jumlah Module", "Jumlah Module"), 
-            ("Type batt 1", "Type Battery", "Type Battery"),
-            ("Jumlah batt 1", "Jumlah Battery", "Jumlah Battery"), 
-            ("DC Voltage 1", "DC Voltage", "DC Voltage"), 
-            ("Load Current 1", "Rectifier Current", "Rectifier Current"),
-            ("Type recti 2", "Type Rectifier 2", "Type Rectifier 2"), 
-            ("Jumlah Module 2", "Jumlah Module 2", "Jumlah Module 2"), 
-            ("Type batt 2", "Type Battery 2", "Type Battery 2"),
-            ("Jumlah batt 2", "Jumlah Battery 2", "Jumlah Battery 2"), 
-            ("Load current recti 2", "Load current recti 2", "Load current recti 2")
+            ("Main Power", "Main Power", "Main Power"), ("Daya PLN", "Daya PLN", "Daya PLN"), ("Kapasitas MCB", "Kapasitas MCB", "Kapasitas MCB"),
+            ("Tegangan R - N", "Tegangan PLN (R-N)", "Tegangan PLN (R-N)"), ("Tegangan S - N", "Tegangan PLN (S-N)", "Tegangan PLN (S-N)"), ("Tegangan T - N", "Tegangan PLN (T-N)", "Tegangan PLN (T-N)"),
+            ("Arus R", "Beban PLN (R)", "Beban PLN (R)"), ("Arus S", "Beban PLN (S)", "Beban PLN (S)"), ("Arus T", "Beban PLN (T)", "Beban PLN (T)"),
+            ("Type recti 1", "Type Rectifier", "Type Rectifier"), ("Jumlah Module 1", "Jumlah Module", "Jumlah Module"), ("Type batt 1", "Type Battery", "Type Battery"),
+            ("Jumlah batt 1", "Jumlah Battery", "Jumlah Battery"), ("DC Voltage 1", "DC Voltage", "DC Voltage"), ("Load Current 1", "Rectifier Current", "Rectifier Current"),
+            ("Type recti 2", "Type Rectifier 2", "Type Rectifier 2"), ("Jumlah Module 2", "Jumlah Module 2", "Jumlah Module 2"), ("Type batt 2", "Type Battery 2", "Type Battery 2"),
+            ("Jumlah batt 2", "Jumlah Battery 2", "Jumlah Battery 2"), ("Load current recti 2", "Load current recti 2", "Load current recti 2")
         ]
-        tech_rows = []
-        for label, col_sheet, col_sub in tech_mapping:
-            final_val = dapatkan_nilai_teknis(data_site, col_sheet, col_sub)
-            tech_rows.append({"Detail Parameter": label, "Value": final_val})
+        tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH (FIXED TREND AVAILABILITY)
+    # KOLOM 3: FINDINGS & GRAPH
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
@@ -202,9 +194,15 @@ else:
         st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Weekly Availability Trend (Power & Transport)</b>", unsafe_allow_html=True)
         
         if not df_sup_inap.empty:
-            # FIX PATEN: Paksa baca dari nama kolom 'site_id' saja karena kolom 'id' isinya auto-increment
-            if 'site_id' in df_sup_inap.columns:
-                df_sup_inap['site_clean'] = df_sup_inap['site_id'].astype(str).apply(format_site_id)
+            # PENDETEKSI KOLOM SITE ID ANTI-MELESET
+            inap_site_col = None
+            for c in df_sup_inap.columns:
+                if str(c).lower().strip() in ['site_id', 'site id', 'id site', 'site']:
+                    inap_site_col = c
+                    break
+            
+            if inap_site_col:
+                df_sup_inap['site_clean'] = df_sup_inap[inap_site_col].astype(str).apply(format_site_id)
                 target_site = format_site_id(data_site.get('site_id', ''))
                 target_sheet = format_site_id(data_site.get('site_clean_sheet', ''))
                 
@@ -219,14 +217,14 @@ else:
                         chart_data = d_trend[[col_w[0], col_p[0], col_t[0]]].copy()
                         chart_data[col_p[0]] = chart_data[col_p[0]].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
                         chart_data[col_t[0]] = chart_data[col_t[0]].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
-                        
                         chart_data.columns = ['Week', 'Power (%)', 'Transport (%)']
                         st.line_chart(chart_data.sort_values(by='Week').set_index('Week'), height=155)
                     else: st.caption(f"ℹ️ Format kolom di inap_data tidak cocok.")
                 else: 
-                    st.caption(f"ℹ️ Belum ada data mingguan untuk {target_site} di inap_data.")
+                    st.caption(f"ℹ️ Belum ada data mingguan untuk {target_sheet} di inap_data.")
+                    # DEBUGGER
                     with st.expander("🛠️ Debugger"):
-                        st.write("Site IDs di Supabase inap_data:", df_sup_inap['site_clean'].unique()[:10])
+                        st.write("Site IDs di Supabase inap_data:", df_sup_inap['site_clean'].dropna().unique()[:10])
             else: st.caption("ℹ️ Tidak menemukan kolom 'site_id' di tabel inap_data.")
         else: st.caption("ℹ️ Gagal memuat tabel inap_data dari Supabase.")
 
@@ -247,9 +245,7 @@ else:
                     with st.spinner("Saving..."):
                         s, p = update_rekomendasi_gsheet(data_site[kolom_site_sheet], teks)
                         if s: 
-                            st.success("Tersimpan!")
-                            st.cache_data.clear()
-                            st.rerun()
+                            st.success("Tersimpan!"); st.cache_data.clear(); st.rerun()
                         else: st.error(f"Gagal: {p}")
             with b2:
                 if st.button("❌ Tidak", use_container_width=True): st.rerun()
@@ -258,7 +254,7 @@ else:
             if rekomendasi_input.strip() == "": st.warning("Isi data!")
             else: popup_konfirmasi(rekomendasi_input)
 
-    # --- ROW 3: EVIDENCE SECURE & CAPTION POPUP ---
+    # --- ROW 3: EVIDENCE ---
     st.markdown("<div style='margin-top:10px; font-size:14px;'><b>📁 Evidence & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
     all_photos, all_csvs, seen_urls = [], [], set()
     
