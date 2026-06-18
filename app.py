@@ -8,13 +8,12 @@ import difflib
 st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
 
 # --- KREDENSIAL & DATA SOURCE MASTER ---
-# REQ 1: Source beralih penuh ke direct stream Google Sheets lo, Zi
 GOOGLE_SHEET_ID = "1FGKOzWoUrbf3PXN_ahgG1t-83JZT4H4sioQepePbBxM"
 
-# ⚠️ PASTIKAN URL DAN KEY SUPABASE LO YANG SUDAH JALAN TETAP TERPASANG DI SINI!
-SUPABASE_URL = "https://masukin-project-id-lo.supabase.co"
-SUPABASE_KEY = "masukin-anon-key-atau-service-role-key-supabase-lo"
-SUPABASE_TABLE = "dapot_data"
+# ⚠️ ISI KREDENSIAL SUPABASE LO YANG ASLI DI SINI YAA!
+SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
+SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
+SUPABASE_TABLE = "dapot_data" # Ganti jadi dapot_site kalau emang itu namanya
 
 # --- Fungsi Standarisasi & Ekstraksi Format Site ID ---
 def format_site_id(site_id):
@@ -64,7 +63,7 @@ def konversi_link_gdrive(url_tunggal):
         
     return link_bersih, link_bersih, link_bersih
 
-# --- REQ 1: FUNGSI PULL DATA LANGSUNG DARI GOOGLE SHEETS VIA CSV EXPORT ---
+# --- FUNGSI PULL DATA LANGSUNG DARI GOOGLE SHEETS VIA CSV EXPORT ---
 @st.cache_data(ttl=300)
 def load_data_from_google_sheets():
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv"
@@ -89,8 +88,11 @@ def load_data_from_supabase():
 df_sheet = load_data_from_google_sheets()
 df_sup = load_data_from_supabase()
 
-if df_sheet.empty or df_sup.empty:
-    st.warning("Gagal memuat data dari Google Sheet atau Supabase. Periksa pengaturan share link lo, Zi.")
+# --- PENDETEKSI ERROR SPESIFIK ---
+if df_sheet.empty:
+    st.error("🚨 Gagal memuat data dari Google Sheets! Pastikan link Google Sheet lo udah di-set ke 'Anyone with the link' (Viewer).")
+elif df_sup.empty:
+    st.error("🚨 Gagal memuat data dari Supabase! Cek lagi apakah URL, KEY, dan Nama Tabel di kodingan udah lo isi pakai data asli lo.")
 else:
     # Processing & Merge Data
     kolom_site_sheet = 'Site' if 'Site' in df_sheet.columns else ([c for c in df_sheet.columns if "site" in c.lower() or "id" in c.lower()] + [df_sheet.columns[0]])[0]
@@ -174,7 +176,6 @@ else:
         st.dataframe(pd.DataFrame(info_dasar), hide_index=True, use_container_width=True, height=245)
 
     # ================= SLIDE ELEMENT 2: POWER GRID METRICS + VIDEO PLAYBACK =================
-    # REQ 2: Deteksi dan render video dari kolom 'voltage saat backup' di seksi kelistrikan
     kolom_video = [c for c in df_sheet.columns if "voltage" in c.lower() and "backup" in c.lower()]
     url_video_mentah = data_site.get(kolom_video[0]) if kolom_video else None
     _, _, direct_video_url = konversi_link_gdrive(url_video_mentah) if url_video_mentah else (None, None, None)
@@ -190,7 +191,6 @@ else:
             st.metric(label="Tegangan T-N", value=f"{data_site.get('Tegangan PLN (T-N)', '-')} V")
             st.metric(label="G-N Grounding", value=f"{data_site.get('G-N Grounding ke Netral', '-')} V")
             
-        # REQ 2: Tampilkan player video compact di bawah angka meteran
         if direct_video_url and "drive.google.com" in direct_video_url or "id=" in str(url_video_mentah):
             st.video(direct_video_url)
         else:
@@ -225,7 +225,6 @@ else:
     seen_urls = set()
     
     for col_name in df_sheet.columns:
-        # Skip kolom video kelistrikan agar tidak double tampil di galeri foto bawah
         if kolom_video and col_name == kolom_video[0]: 
             continue
             
