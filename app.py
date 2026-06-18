@@ -9,9 +9,8 @@ st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
 
 # --- KREDENSIAL & DATA SOURCE MASTER ---
 GOOGLE_SHEET_ID = "1FGKOzWoUrbf3PXN_ahgG1t-83JZT4H4sioQepePbBxM"
-
-# Kredensial asli lo udah gue amankan di sini, Zi! Gak bakal ke-reset lagi
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxCQUGt5_Jybed2AwFP4xXFru6GxuMoSwQpUZ63aK9o0WlUFnumOoseRWwgRmxZZ9XYtQ/exec"
+
 SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
 SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
 SUPABASE_TABLE_DAPOT = "dapot_data"
@@ -21,14 +20,8 @@ SUPABASE_TABLE_INAP = "inap_data"
 def format_site_id(site_id):
     if pd.isna(site_id) or str(site_id).strip() == "": return "-"
     s = str(site_id).strip().upper().replace(" ", "").replace("-", "").replace("_", "")
-    
-    # Deteksi pola 3 huruf diikuti angka berapapun (1 sampai 3 digit)
-    match = re.search(r'([A-Z]{3})(\d+)', s)
-    if match:
-        huruf = match.group(1)
-        angka = match.group(2)
-        return f"{huruf}{angka.zfill(3)}" # Mengubah otomatis KKP7 atau KKP07 jadi KKP007 saklek
-        
+    match = re.search(r'[A-Z]{3}\d{3}', s)
+    if match: return match.group(0)
     return re.sub(r'^K+P', 'KKP', s)
 
 def clean_label_name(name):
@@ -59,23 +52,19 @@ def konversi_link_gdrive(url_tunggal):
         return thumb_url, zoom_url, dl_url, embed_url
     return link_bersih, link_bersih, link_bersih, None
 
-# --- PERBAIKAN 2: Fungsi Pintar Deteksi Nilai dengan Fallback ke Supabase ---
+# --- Fungsi Pintar Deteksi Nilai dengan Fallback ke Supabase dapot_data ---
 def dapatkan_nilai_teknis(row, kolom_sheet, kolom_supabase):
     val_sheet = row.get(kolom_sheet)
-    # Jika di GSheet gak kosong, valid, dan bukan setrip, pakai data GSheet
-    if pd.notna(val_sheet) and str(val_sheet).strip() != "" and str(val_sheet).strip() != "-":
+    if pd.notna(val_sheet) and str(val_sheet).strip() not in ["", "-", "nan"]:
         return str(val_sheet).strip()
     
-    # Jika di GSheet kosong, otomatis intip data dari Supabase dapot_data
     val_sup = row.get(f"{kolom_supabase}_dapot") if f"{kolom_supabase}_dapot" in row else row.get(kolom_supabase)
-    if pd.notna(val_sup) and str(val_sup).strip() != "" and str(val_sup).strip() != "-":
+    if pd.notna(val_sup) and str(val_sup).strip() not in ["", "-", "nan"]:
         return str(val_sup).strip()
         
     return "-"
 
-# --- Fungsi Kirim Update Rekomendasi ke Google Sheet ---
 def update_rekomendasi_gsheet(site_id_asli, teks_rekomendasi):
-    if "GANTI_PAKE_URL" in APPS_SCRIPT_URL: return False, "URL Apps Script belum dipasang!"
     try:
         payload = {"site_id": str(site_id_asli).strip(), "rekomendasi": str(teks_rekomendasi).strip()}
         response = requests.post(APPS_SCRIPT_URL, json=payload, timeout=15)
@@ -83,7 +72,7 @@ def update_rekomendasi_gsheet(site_id_asli, teks_rekomendasi):
         return False, response.text
     except Exception as e: return False, str(e)
 
-# --- FUNGSI PULL DATA ---
+# --- FUNGSI PULL DATA (DI-UPGRADE: BYPASS LIMIT 1000 BARIS SUPABASE) ---
 @st.cache_data(ttl=60)
 def load_data_from_google_sheets():
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv"
@@ -92,7 +81,7 @@ def load_data_from_google_sheets():
 
 @st.cache_data(ttl=600)
 def load_data_from_supabase(table_name):
-    # Ditambahkan &limit=10000 di ujung URL agar data mingguan lo yang numpuk gak kepotong lagi
+    # LIMIT DITAMBAHKAN JADI 10000 AGAR DATA MINGGUAN GAK KEPOTONG
     url = f"{SUPABASE_URL}/rest/v1/{table_name}?select=*&limit=10000"
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
     try:
@@ -108,7 +97,6 @@ df_sup_inap = load_data_from_supabase(SUPABASE_TABLE_INAP)
 if df_sheet.empty or df_sup_dapot.empty:
     st.error("🚨 Gagal memuat data! Cek Google Sheet Access (Anyone with link) & Supabase Credentials.")
 else:
-    # Processing Data
     kolom_site_sheet = 'Site' if 'Site' in df_sheet.columns else ([c for c in df_sheet.columns if "site" in c.lower() or "id" in c.lower()] + [df_sheet.columns[0]])[0]
     df_sheet['site_clean_sheet'] = df_sheet[kolom_site_sheet].apply(format_site_id)
     df_sup_dapot['site_clean_sup'] = df_sup_dapot['site_id'].apply(format_site_id)
@@ -131,26 +119,26 @@ else:
     .ppt-card-blue { background-color: #1e3d59; color: white; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #ffc13b; }
     .ppt-card-gold { background-color: #ffc13b; color: #1e3d59; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #1e3d59; }
     .gallery-container { display: flex; overflow-x: auto; padding: 10px; background-color: #111; border-radius: 8px; border: 1px solid #333; }
-    .photo-card { flex: 0 0 auto; width: 110px; margin-right: 12px; text-align: center; position: relative; }
+    .photo-card { flex: 0 0 auto; width: 110px; margin-right: 12px; text-align: center; position: relative; cursor: pointer; }
     .hide-checkbox { display: none; }
     .hide-checkbox:checked + .photo-card { display: none; }
     .exclude-btn { position: absolute; top: 1px; right: 8px; background: rgba(211,47,47,0.9); color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; line-height: 16px; cursor: pointer; font-weight: bold; z-index: 10; }
-    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.96); z-index: 99999999 !important; justify-content: center; align-items: center; }
+    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999999; justify-content: center; align-items: center; }
     .lightbox:target { display: flex; }
-    .lightbox img, .lightbox iframe { max-width: 80%; max-height: 80%; border-radius: 6px; }
-    .lightbox .close-lightbox { position: absolute; top: 65px; right: 40px; color: #fff; font-size: 45px; text-decoration: none; font-weight: bold; z-index: 99999999 !important; }
-    .lightbox .nav-arrow { position: absolute; top: 50%; color: #fff; font-size: 50px; font-weight: bold; text-decoration: none; transform: translateY(-50%); padding: 20px; z-index: 99999999 !important; text-shadow: 0px 2px 8px #000; }
-    .lightbox .prev-arrow { left: 40px; }
-    .lightbox .next-arrow { right: 40px; }
+    .lightbox img, .lightbox iframe { max-width: 80%; max-height: 80%; border-radius: 6px; box-shadow: 0px 5px 25px rgba(0,0,0,0.5); }
+    .lightbox .close-lightbox { position: absolute; top: 20px; right: 40px; color: #fff; font-size: 40px; text-decoration: none; font-weight: bold; z-index: 99999999; text-shadow: 0px 2px 5px #000; }
+    .lightbox .nav-arrow { position: absolute; top: 50%; color: #fff; font-size: 50px; font-weight: bold; text-decoration: none; transform: translateY(-50%); padding: 20px; z-index: 99999999; text-shadow: 0px 2px 8px #000; }
+    .lightbox .prev-arrow { left: 40px; } .lightbox .next-arrow { right: 40px; }
     
-    /* PERBAIKAN 3: CSS STYLING CAPTION TEXT DI BAWAH POPUP FOTO */
-    .lightbox .popup-caption { position: absolute; bottom: 35px; color: #ffc13b; font-size: 18px; font-weight: bold; text-align: center; width: 100%; text-shadow: 0px 2px 6px rgba(0,0,0,0.9); z-index: 99999999 !important; font-family: sans-serif; }
+    /* CSS CAPTION UNTUK JUDUL FOTO POPUP */
+    .lightbox .caption-text { position: absolute; bottom: 30px; color: #ffc13b; font-size: 18px; font-weight: bold; text-align: center; width: 100%; text-shadow: 0px 2px 4px rgba(0,0,0,0.8); z-index: 99999999; font-family: sans-serif; letter-spacing: 0.5px; }
+    
+    .video-overlay-btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(211, 47, 47, 0.85); color: white; border-radius: 50%; width: 26px; height: 24px; line-height: 24px; font-size: 11px; font-weight: bold; pointer-events: none; box-shadow: 0px 2px 5px rgba(0,0,0,0.5); }
     
     div[data-testid="stMetric"] { background-color: #262730; padding: 5px 10px; border-radius: 4px; border: 1px solid #444; }
     .findings-grid { display: grid; grid-template-columns: auto auto; gap: 8px 15px; background-color: #262730; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; border: 1px solid #444; }
     .f-item { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 4px; }
     .custom-footer { text-align: center; font-size: 12px; color: #888; margin-top: 30px; border-top: 1px solid #333; padding-top: 10px; }
-    .video-overlay-btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(211, 47, 47, 0.85); color: white; border-radius: 50%; width: 26px; height: 24px; line-height: 24px; font-size: 11px; font-weight: bold; pointer-events: none; }
     </style>""", unsafe_allow_html=True)
 
     # --- ROW 1: HEADER ---
@@ -180,11 +168,9 @@ else:
         }
         st.dataframe(pd.DataFrame(master_list), hide_index=True, use_container_width=True, height=350)
 
-    # PERBAIKAN 2: KOLOM TECHNICAL DETAIL DENGAN LOGIKA AUTO-FALLBACK KE SUPABASE
+    # KOLOM 2: TECHNICAL DETAIL (20 ITEMS WITH FALLBACK LOGIC)
     with c2:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>⚙️ Site Technical Detailed Specs</b></div>", unsafe_allow_html=True)
-        
-        # Mapping relasi kolom (Nama Baris, Nama Kolom GSheet, Nama Kolom Supabase Dapot)
         tech_mapping = [
             ("Main Power", "Main Power", "Main Power"), 
             ("Daya PLN", "Daya PLN", "Daya PLN"), 
@@ -207,44 +193,48 @@ else:
             ("Jumlah batt 2", "Jumlah Battery 2", "Jumlah Battery 2"), 
             ("Load current recti 2", "Load current recti 2", "Load current recti 2")
         ]
-        
         tech_rows = []
         for label, col_sheet, col_sub in tech_mapping:
             final_val = dapatkan_nilai_teknis(data_site, col_sheet, col_sub)
             tech_rows.append({"Detail Parameter": label, "Value": final_val})
-            
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH (PERBAIKAN 1: MULTI-ID MATCHING TRACING)
+    # KOLOM 3: FINDINGS & GRAPH (FIXED TREND AVAILABILITY)
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
         
         st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Weekly Availability Trend (Power & Transport)</b>", unsafe_allow_html=True)
+        
         if not df_sup_inap.empty:
-            df_sup_inap['site_clean'] = df_sup_inap['site_id'].astype(str).apply(format_site_id)
-            
-            # Cari berdasarkan ID GSheet maupun ID Supabase Dapot biar kebal perbedaan skema data
-            target_ids = [str(data_site.get('site_id', '')), str(data_site.get('site_clean_sheet', ''))]
-            cleaned_targets = [format_site_id(tid) for tid in target_ids if tid != '-']
-            
-            d_trend = df_sup_inap[df_sup_inap['site_clean'].isin(cleaned_targets)]
-            
-            if not d_trend.empty:
-                col_w = [c for c in d_trend.columns if any(x in c.lower() for x in ['week', 'minggu', 'date'])]
-                col_p = [c for c in d_trend.columns if any(x in c.lower() for x in ['power', 'pwr'])]
-                col_t = [c for c in d_trend.columns if any(x in c.lower() for x in ['transport', 'trans'])]
+            # Cari kolom yang jadi ID di inap_data (jaga-jaga kalau namanya bukan site_id)
+            inap_site_col = [c for c in df_sup_inap.columns if 'site' in str(c).lower() or 'id' in str(c).lower()]
+            if inap_site_col:
+                df_sup_inap['site_clean'] = df_sup_inap[inap_site_col[0]].astype(str).apply(format_site_id)
+                target_site = format_site_id(data_site.get('site_id', ''))
+                target_sheet = format_site_id(data_site.get('site_clean_sheet', ''))
                 
-                if col_w and col_p and col_t:
-                    df_chart = d_trend[[col_w[0], col_p[0], col_t[0]]].copy()
-                    df_chart[col_p[0]] = pd.to_numeric(df_chart[col_p[0]], errors='coerce')
-                    df_chart[col_t[0]] = pd.to_numeric(df_chart[col_t[0]], errors='coerce')
-                    df_chart.columns = ['Week', 'Power (%)', 'Transport (%)']
-                    st.line_chart(df_chart.sort_values(by='Week').set_index('Week'), height=185)
-                else: st.caption("ℹ️ Format kolom inap_data tidak sesuai.")
-            else: st.caption(f"ℹ️ Belum ada data mingguan untuk {data_site['site_clean_sheet']} di inap_data.")
-        else:
-            st.caption("ℹ️ Gagal memuat tabel inap_data.")
+                # Filter data berdasarkan ID Supabase atau ID Gsheet (Biar sakti)
+                d_trend = df_sup_inap[(df_sup_inap['site_clean'] == target_site) | (df_sup_inap['site_clean'] == target_sheet)]
+                
+                if not d_trend.empty:
+                    col_w = [c for c in d_trend.columns if any(x in str(c).lower() for x in ['week', 'minggu', 'date', 'waktu', 'periode'])]
+                    col_p = [c for c in d_trend.columns if any(x in str(c).lower() for x in ['power', 'pwr', 'avail p'])]
+                    col_t = [c for c in d_trend.columns if any(x in str(c).lower() for x in ['transport', 'trans', 'avail t'])]
+                    
+                    if col_w and col_p and col_t:
+                        chart_data = d_trend[[col_w[0], col_p[0], col_t[0]]].copy()
+                        
+                        # Pembersih Angka Super (Hapus %, ganti koma jadi titik, paksa jadi float)
+                        chart_data[col_p[0]] = chart_data[col_p[0]].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
+                        chart_data[col_t[0]] = chart_data[col_t[0]].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
+                        
+                        chart_data.columns = ['Week', 'Power (%)', 'Transport (%)']
+                        st.line_chart(chart_data.sort_values(by='Week').set_index('Week'), height=155)
+                    else: st.caption(f"ℹ️ Format kolom di inap_data tidak cocok.")
+                else: st.caption(f"ℹ️ Belum ada data mingguan untuk {target_site} di inap_data.")
+            else: st.caption("ℹ️ Tidak menemukan kolom Site ID di tabel inap_data.")
+        else: st.caption("ℹ️ Gagal memuat tabel inap_data dari Supabase.")
 
     # KOLOM 4: RECOMMENDATION
     with c4:
@@ -274,7 +264,7 @@ else:
             if rekomendasi_input.strip() == "": st.warning("Isi data!")
             else: popup_konfirmasi(rekomendasi_input)
 
-    # --- ROW 3: EVIDENCE (PERBAIKAN 2: GARANSI FILE DOKUMEN XLSX/CSV AMAN) ---
+    # --- ROW 3: EVIDENCE SECURE & CAPTION POPUP ---
     st.markdown("<div style='margin-top:10px; font-size:14px;'><b>📁 Evidence & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
     all_photos, all_csvs, seen_urls = [], [], set()
     
@@ -286,9 +276,8 @@ else:
             if url in seen_urls: continue
             seen_urls.add(url)
             
-            # Cek format file secara aman agar lampiran gak ilang
             is_csv = "csv" in col_name.lower() or ".csv" in url.lower() or "data" in col_name.lower() or ".xlsx" in url.lower()
-            is_video = "voltage" in col_name.lower() or ".mp4" in url.lower() or ".mov" in url.lower()
+            is_video = "voltage" in col_name.lower() or "backup" in col_name.lower() or ".mp4" in url.lower() or ".mov" in url.lower()
             
             thumb_url, zoom_url, dl_url, embed_url = konversi_link_gdrive(url)
             label = f"{clean_label_name(col_name)} #{idx+1}" if len(urls) > 1 else clean_label_name(col_name)
@@ -313,12 +302,11 @@ else:
             sid_n = re.sub(r'[^a-zA-Z0-9]', '', f"{all_photos[(i+1)%total]['col']}{all_photos[(i+1)%total]['idx']}")
             nav = f'<a href="#lightbox-{sid_p}" class="nav-arrow prev-arrow">❮</a><a href="#lightbox-{sid_n}" class="nav-arrow next-arrow">❯</a>'
             
-            # Iframe player buat video, tag img buat foto standar
-            content = f'<iframe src="{p["embed"]}" width="80%" height="80%" style="border:none; background:#000;" allow="autoplay"></iframe>' if p['is_vid'] else f'<img src="{p["zoom"]}">'
+            content = f'<iframe src="{p["embed"]}" width="80%" height="80%" style="border:none; background:#000; border-radius:8px;" allow="autoplay"></iframe>' if p['is_vid'] else f'<img src="{p["zoom"]}">'
             ovr = '<div class="video-overlay-btn">▶</div>' if p['is_vid'] else ''
             
-            # PERBAIKAN 3: Menyuntikkan elemen <div class="popup-caption"> di bawah media lightbox
-            html_str += f'<input type="checkbox" id="hide-{sid}" class="hide-checkbox"><div class="photo-card"><label for="hide-{sid}" class="exclude-btn">&times;</label><a href="#lightbox-{sid}"><div style="position:relative;"><img src="{p["thumb"]}" style="width:100px; height:75px; object-fit:cover; border:1px solid #555;"/><div class="video-overlay-btn">{ovr}</div></div></a><div style="font-size:9px; color:#ccc; overflow:hidden;">{p["label"]}</div></div><div id="lightbox-{sid}" class="lightbox"><a href="#" class="close-lightbox">&times;</a>{nav}{content}<div class="popup-caption">{p["label"]}</div></div>'
+            # INJEKSI CLASS CAPTION-TEXT DI DALAM LIGHTBOX
+            html_str += f'<input type="checkbox" id="hide-{sid}" class="hide-checkbox"><div class="photo-card"><label for="hide-{sid}" class="exclude-btn" title="Hide">&times;</label><a href="#lightbox-{sid}"><div style="position:relative;"><img src="{p["thumb"]}" style="width:100px; height:75px; object-fit:cover; border:1px solid #555; border-radius:4px;"/><div class="video-overlay-btn">{ovr}</div></div></a><div style="font-size:10px; margin-top:4px; color:#ccc; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{p["label"]}</div></div><div id="lightbox-{sid}" class="lightbox"><a href="#" class="close-lightbox">&times;</a>{nav}{content}<div class="caption-text">{p["label"]}</div></div>'
             
         if html_str: st.markdown(f'<div class="gallery-container">{html_str}</div>', unsafe_allow_html=True)
         else: st.caption("No unique documentation photos found.")
