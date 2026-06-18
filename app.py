@@ -10,7 +10,7 @@ st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
 
 # --- KREDENSIAL & DATA SOURCE MASTER ---
 GOOGLE_SHEET_ID = "1FGKOzWoUrbf3PXN_ahgG1t-83JZT4H4sioQepePbBxM"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxCQUGt5_Jybed2AwFP4xXFru6GxuMoSwQpUZ63aK9o0WlUFnumOoseRWwgRmxZZ9XYtQ/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzW8whjIAgTQXSoOWb_J5iovbiyyuPgtK6sliDJvjjG2STV9n12PG4gBq_fKMHuxL4i-A/exec"
 
 SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
 SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
@@ -72,9 +72,19 @@ def dapatkan_nilai_teknis(row, kolom_sheet, kolom_supabase):
         return str(val_sup).strip()
     return "-"
 
+# Fungsi Push Rekomendasi Action Plan
 def update_rekomendasi_gsheet(site_id_asli, teks_rekomendasi):
     try:
         payload = {"site_id": str(site_id_asli).strip(), "rekomendasi": str(teks_rekomendasi).strip()}
+        response = requests.post(APPS_SCRIPT_URL, json=payload, timeout=15)
+        if response.status_code == 200 and "Sukses" in response.text: return True, "Sukses"
+        return False, response.text
+    except Exception as e: return False, str(e)
+
+# FUNGSI BARU: Push Banyak Kolom Spek Teknis Sekaligus ke Google Sheets
+def update_tech_specs_gsheet(site_id_asli, dict_specs):
+    try:
+        payload = {"site_id": str(site_id_asli).strip(), "tech_specs": dict_specs}
         response = requests.post(APPS_SCRIPT_URL, json=payload, timeout=15)
         if response.status_code == 200 and "Sukses" in response.text: return True, "Sukses"
         return False, response.text
@@ -209,6 +219,7 @@ else:
         }
         st.dataframe(pd.DataFrame(master_list), hide_index=True, use_container_width=True, height=280)
 
+    # PERBAIKAN REVISI 1, 2, & 3: EDITABLE SPECS + FULL HIGHLIGHT NO SCROLLBAR + PERMUTASI BATERAI KEMBAR
     with c2:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>⚙️ Site Technical Detailed Specs</b></div>", unsafe_allow_html=True)
         tech_mapping = [
@@ -234,8 +245,39 @@ else:
             ("Load current recti 2", "Load current recti 2", "Load current recti 2")
         ]
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
-        # FIX ERROR: Diganti jadi height=750 biar gak error dan semua list terbaca tanpa scroll
-        st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=750)
+        
+        # Mengubah st.dataframe jadi st.data_editor dengan Key Dinamis per Site ID
+        df_editable = pd.DataFrame(tech_rows)
+        edited_df = st.data_editor(
+            df_editable, 
+            hide_index=True, 
+            use_container_width=True, 
+            disabled=["Detail Parameter"], 
+            key=f"tech_editor_{t_id_clean}",
+            height=735
+        )
+        
+        # Tombol Pendorong Data Spek Teknis Baru ke Google Sheets
+        if st.button("💾 Push Spek Teknis", use_container_width=True):
+            payload_specs = {}
+            for index, row in edited_df.iterrows():
+                lbl = row["Detail Parameter"]
+                val = row["Value"]
+                # Cari tahu nama asli kolom excelnya dari array tech_mapping
+                real_col_gsheet = next((m[1] for m in tech_mapping if m[0] == lbl), None)
+                if real_col_gsheet:
+                    # Bersihkan nama .1 pasca mapping pandas biar balik murni nama kolom asal
+                    clean_col_name = real_col_gsheet.replace(".1", "")
+                    payload_specs[clean_col_name] = val
+            
+            with st.spinner("Pushing to GSheet..."):
+                status_ok, return_msg = update_tech_specs_gsheet(data_site[kolom_site_sheet], payload_specs)
+                if status_ok:
+                    st.success("Spek Teknis Berhasil Di-update!")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error(f"Gagal Pushing: {return_msg}")
 
     # KOLOM 3: FINDINGS & GRAPH
     with c3:
@@ -243,9 +285,6 @@ else:
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
         
         st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Daily Availability Trend</b>", unsafe_allow_html=True)
-        
-        t_id_asli = str(data_site.get('site_id', '')).strip()
-        t_id_clean = str(data_site.get('site_clean_sheet', '')).strip()
         
         df_trend = fetch_inap_for_site(t_id_clean, t_id_asli)
             
@@ -319,13 +358,14 @@ else:
         else: 
             st.caption(f"ℹ️ Belum ada data harian untuk site ini di tabel inap_data.")
 
-    # KOLOM 4: RECOMMENDATION
+    # KOLOM 4: RECOMMENDATION (FIXED BUG BINDING SYNC DROP-DOWN)
     with c4:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Action Plan</b></div>", unsafe_allow_html=True)
         reko_val = data_site.get('Rekomendasi Perbaikan', '')
         if pd.isna(reko_val): reko_val = ""
         
-        rekomendasi_input = st.text_area("Rekomendasi Perbaikan:", value=str(reko_val), placeholder="Input rekomendasi...", key=f"input_rekomendasi_{t_id_clean}", height=230, label_visibility="collapsed")
+        # REVISI 3: Key bersifat dinamis per site ID agar isi teks otomatis me-refresh pas dropdown dipindah
+        st_rekomendasi_input = st.text_area("Rekomendasi Perbaikan:", value=str(reko_val), placeholder="Input rekomendasi...", key=f"input_rekomendasi_{t_id_clean}", height=230, label_visibility="collapsed")
         
         @st.dialog("Konfirmasi")
         def popup_konfirmasi(teks):
@@ -343,8 +383,8 @@ else:
                 if st.button("❌ Tidak", use_container_width=True): st.rerun()
 
         if st.button("💾 Push Update", use_container_width=True):
-            if rekomendasi_input.strip() == "": st.warning("Isi data!")
-            else: popup_konfirmasi(rekomendasi_input)
+            if st_rekomendasi_input.strip() == "": st.warning("Isi data!")
+            else: popup_konfirmasi(st_rekomendasi_input)
 
     # --- ROW 3: EVIDENCE SECURE & CAPTION POPUP ---
     st.markdown("<div style='margin-top:10px; font-size:14px;'><b>📁 Evidence & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
