@@ -10,8 +10,7 @@ st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
 # --- KREDENSIAL & DATA SOURCE MASTER ---
 GOOGLE_SHEET_ID = "1FGKOzWoUrbf3PXN_ahgG1t-83JZT4H4sioQepePbBxM"
 
-# ⚠️ PASTE URL WEB APP APPS SCRIPT LO DI SINI SETELAH SETUP (PANDUAN DI BAWAH)
-# Sementara di-set dummy agar aplikasi lo gak crash kalau belum setup
+# ⚠️ PENTING: PASTE URL WEB APP GOOGLE APPS SCRIPT LO DI SINI BIAR BISA SAVE KE GSHEET!
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/GANTI_PAKE_URL_APPS_SCRIPT_LO/exec"
 
 # ⚠️ PASTIKAN URL DAN KEY SUPABASE LO TETAP TERPASANG DI SINI!
@@ -44,10 +43,10 @@ def cari_site_terdekat(site_appsheet, list_site_supabase):
     cocok = difflib.get_close_matches(site_appsheet, list_site_supabase, n=1, cutoff=0.6)
     return cocok[0] if cocok else None
 
-# --- Fungsi Ekstraksi ID GDrive (Foto & File) ---
+# --- Fungsi Ekstraksi ID GDrive (Foto, File, & Video Embed) ---
 def konversi_link_gdrive(url_tunggal):
     if not url_tunggal or str(url_tunggal).strip() == "":
-        return None, None, None
+        return None, None, None, None
         
     link_bersih = str(url_tunggal).strip()
     file_id = None
@@ -63,32 +62,15 @@ def konversi_link_gdrive(url_tunggal):
         thumb_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w400"
         zoom_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w1600"
         direct_download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        return thumb_url, zoom_url, direct_download_url
+        embed_video_url = f"https://drive.google.com/file/d/{file_id}/preview"
+        return thumb_url, zoom_url, direct_download_url, embed_video_url
         
-    return link_bersih, link_bersih, link_bersih
+    return link_bersih, link_bersih, link_bersih, None
 
-# --- REQ 1: Fungsi Khusus untuk Bypass Player Video GDrive via Iframe Player ---
-def dapatkan_embed_video_gdrive(url_tunggal):
-    if not url_tunggal or str(url_tunggal).strip() == "":
-        return None
-    link_bersih = str(url_tunggal).strip()
-    file_id = None
-    if "id=" in link_bersih:
-        id_match = re.search(r'id=([a-zA-Z0-9_-]+)', link_bersih)
-        if id_match: file_id = id_match.group(1)
-    elif "drive.google.com/file/d/" in link_bersih:
-        id_match = re.search(r'/file/d/([a-zA-Z0-9_-]+)', link_bersih)
-        if id_match: file_id = id_match.group(1)
-        
-    if file_id:
-        return f"https://drive.google.com/file/d/{file_id}/preview"
-    return None
-
-# --- Fungsi Kirim Update Rekomendasi ke Google Sheet via Webhook Apps Script ---
+# --- Fungsi Kirim Update Rekomendasi ke Google Sheet via Webhook ---
 def update_rekomendasi_gsheet(site_id_asli, teks_rekomendasi):
     if "GANTI_PAKE_URL_APPS_SCRIPT_LO" in APPS_SCRIPT_URL:
-        # Fallback simulate success biar dashboard ga error pas dicoba pertama kali
-        return True
+        return True # Fallback simulate true biar ga crash pas testing pertama
     try:
         payload = {
             "site_id": str(site_id_asli).strip(),
@@ -159,16 +141,18 @@ else:
     .hide-checkbox:checked + .photo-card { display: none; }
     .exclude-btn { position: absolute; top: 1px; right: 8px; background: rgba(211,47,47,0.9); color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; line-height: 16px; cursor: pointer; font-weight: bold; z-index: 10; }
     
-    /* FIX POPUP TERTUTUP HEADER STREAMLIT: Z-index dinaikkan jadi level tertinggi */
     .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 99999999 !important; justify-content: center; align-items: center; }
     .lightbox:target { display: flex; }
-    .lightbox img { max-width: 85%; max-height: 85%; border-radius: 6px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    .lightbox img, .lightbox iframe { max-width: 85%; max-height: 85%; border-radius: 6px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
     .lightbox .close-lightbox { position: absolute; top: 65px; right: 40px; color: #fff; font-size: 45px; text-decoration: none; font-weight: bold; z-index: 99999999 !important; text-shadow: 0px 2px 4px rgba(0,0,0,0.8); }
     
     div[data-testid="stMetric"] { background-color: #262730; padding: 5px 10px; border-radius: 4px; border: 1px solid #444; }
     .findings-grid { display: grid; grid-template-columns: auto auto; gap: 8px 15px; background-color: #262730; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; border: 1px solid #444; }
     .f-item { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 4px; }
     .custom-footer { text-align: center; font-size: 12px; color: #888; margin-top: 30px; border-top: 1px solid #333; padding-top: 10px; }
+    
+    /* CSS Play Button Overlay untuk Video Thumbnail di bawah */
+    .video-overlay-btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(211, 47, 47, 0.85); color: white; border-radius: 50%; width: 26px; height: 24px; line-height: 24px; font-size: 11px; font-weight: bold; pointer-events: none; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
     </style>""", unsafe_allow_html=True)
 
     # --- ROW 1: TOP BAR TITLE SLIDE ---
@@ -188,7 +172,7 @@ else:
     st.markdown(f"<p style='text-align: right; margin: -5px 5px 10px 0; font-size: 13px;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
 
     # --- ROW 2: MAIN PRESENTATION GRID (3 COLUMNS SPLIT) ---
-    col1, col2, col3 = st.columns([1, 1.1, 1.1])
+    col1, col2, col3 = st.columns([1, 0.9, 1.3])
 
     # ================= SLIDE ELEMENT 1: BASIC INFO MASTER =================
     with col1:
@@ -207,12 +191,7 @@ else:
         }
         st.dataframe(pd.DataFrame(info_dasar), hide_index=True, use_container_width=True, height=245)
 
-    # ================= SLIDE ELEMENT 2: POWER GRID METRICS + ACTUAL VIDEO PLAYER =================
-    # REQ 1: Cari nama kolom voltage, konversi ke link preview player Google Drive
-    kolom_video = [c for c in df_sheet.columns if "voltage" in c.lower() and "backup" in c.lower()]
-    url_video_mentah = data_site.get(kolom_video[0]) if kolom_video else None
-    embed_video_url = dapatkan_embed_video_gdrive(url_video_mentah)
-
+    # ================= SLIDE ELEMENT 2: POWER GRID METRICS =================
     with col2:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:15px;'>⚡ Kelistrikan & Power Grid</b></div>", unsafe_allow_html=True)
         
@@ -220,16 +199,12 @@ else:
         with vm1:
             st.metric(label="Tegangan R-N", value=f"{data_site.get('Tegangan PLN (R-N)', '-')} V")
             st.metric(label="Tegangan S-N", value=f"{data_site.get('Tegangan PLN (S-N)', '-')} V")
-        with vm2:
             st.metric(label="Tegangan T-N", value=f"{data_site.get('Tegangan PLN (T-N)', '-')} V")
-            st.metric(label="G-N Grounding", value=f"{data_site.get('G-N Grounding ke Netral', '-')} V")
-            
-        # REQ 1: Me-render player video asli dari Drive menggunakan HTML Iframe Player agar bisa di-play lancar
-        if embed_video_url:
-            video_html = f'<iframe src="{embed_video_url}" width="100%" height="152" allow="autoplay" style="border:1px solid #444; border-radius:4px;"></iframe>'
-            st.components.v1.html(video_html, height=155)
-        else:
-            st.caption("ℹ️ *No voltage backup video uploaded.*")
+        with vm2:
+            st.metric(label="Beban PLN (R)", value=f"{data_site.get('Beban PLN (R)', '-')} A")
+            st.metric(label="Beban PLN (S)", value=f"{data_site.get('Beban PLN (S)', '-')} A")
+            st.metric(label="Beban PLN (T)", value=f"{data_site.get('Beban PLN (T)', '-')} A")
+        st.metric(label="G-N Grounding", value=f"{data_site.get('G-N Grounding ke Netral', '-')} V")
 
     # ================= SLIDE ELEMENT 3: OPERATIONAL FINDINGS & LOG REKOMENDASI =================
     with col3:
@@ -254,7 +229,7 @@ else:
             
         rekomendasi_input = st.text_area("Kolom Input Rekomendasi Korlap:", value=str(rekomendasi_sekarang), placeholder="Ketik rekomendasi perbaikan di sini, Zi...", key="input_rekomendasi", height=45, label_visibility="collapsed")
         
-        # REQ 2: Deklarasi Fungsionalitas st.dialog untuk memicu popup konfirmasi Ya/Tidak
+        # REQ 2: Fungsi Popup Dialog Konfirmasi Ya/Tidak
         @st.dialog("Konfirmasi Pengiriman")
         def popup_konfirmasi(teks_reko):
             st.markdown(f"Apakah lo yakin ingin menyimpan rekomendasi perbaikan untuk site **{data_site[kolom_site_sheet]}** ini, Zi?")
@@ -270,7 +245,7 @@ else:
                             st.cache_data.clear()
                             st.rerun()
                         else:
-                            st.error("Gagal terhubung ke webhook Google Sheet.")
+                            st.error("Gagal terhubung ke webhook Google Sheet. Pastikan URL Web App lo udah bener, Zi.")
             with btn_col2:
                 if st.button("❌ Tidak", use_container_width=True):
                     st.rerun()
@@ -279,16 +254,17 @@ else:
             if rekomendasi_input.strip() == "":
                 st.warning("Isi kolom rekomendasi terlebih dahulu!")
             else:
-                # Picu popup dialog konfirmasi
                 popup_konfirmasi(rekomendasi_input)
 
-    # --- ROW 3: FOOTER ROW (GALLERY SCANNER & FILE ATTACHMENTS) ---
+    # --- ROW 3: FOOTER ROW (DEREF GALLERY SCANNER & FILE ATTACHMENTS) ---
+    # REQ 3: Mengubah Nama Header Menjadi 'Evidence & Dokumentasi Slide'
+    st.markdown("<div style='margin-top: 5px; margin-bottom: 2px; font-size:14px;'><b>📁 Evidence & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
+    
     all_detected_photos = []
     all_detected_csvs = []
     seen_urls = set()
     
     for col_name in df_sheet.columns:
-        if kolom_video and col_name == kolom_video[0]: continue
         val = data_site.get(col_name)
         if pd.isna(val) or not val: continue
         urls = re.findall(r'(https?://[^\s,"\'\}]+)', str(val))
@@ -298,16 +274,22 @@ else:
             seen_urls.add(url)
             
             is_csv = "csv" in col_name.lower() or ".csv" in url.lower() or "data" in col_name.lower()
-            thumb_url, zoom_url, download_url = konversi_link_gdrive(url)
+            # REQ 1: Cek apakah ini kolom video berdasarkan nama kolom voltage/backup
+            is_video = "voltage" in col_name.lower() or "backup" in col_name.lower() or ".mp4" in url.lower() or ".mov" in url.lower()
+            
+            thumb_url, zoom_url, download_url, embed_video_url = konversi_link_gdrive(url)
             base_label = clean_label_name(col_name)
             final_label = f"{base_label} #{idx+1}" if len(urls) > 1 else base_label
             
             if thumb_url and not is_csv:
-                all_detected_photos.append({ 'label': final_label, 'col_name': col_name, 'idx': idx, 'thumb_url': thumb_url, 'zoom_url': zoom_url })
+                all_detected_photos.append({ 
+                    'label': final_label, 'col_name': col_name, 'idx': idx, 
+                    'thumb_url': thumb_url, 'zoom_url': zoom_url, 
+                    'is_video': is_video, 'embed_video_url': embed_video_url 
+                })
             elif is_csv:
                 all_detected_csvs.append({ 'label': final_label, 'download_url': download_url })
 
-    st.markdown("<div style='margin-top: 5px; margin-bottom: 2px; font-size:14px;'><b>📁 Attachments & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
     bot_csv, bot_gal = st.columns([0.8, 2.2])
     
     with bot_csv:
@@ -320,7 +302,27 @@ else:
         html_items = []
         for p in all_detected_photos:
             safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{p['col_name']}{p['idx']}")
-            item_html = f"""<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox">
+            
+            # REQ 1: Jika video, pas diklik dia memicu pop-up player iframe bawaan Drive preview
+            if p['is_video'] and p['embed_video_url']:
+                item_html = f"""<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox">
+<div class="photo-card">
+<label for="hide-{safe_id}" class="exclude-btn" title="Hide">&times;</label>
+<a href="#lightbox-{safe_id}">
+<div style="position: relative; width: 100px; height: 75px;">
+<img src="{p['thumb_url']}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 4px; border: 1px solid #555; opacity: 0.7;"/>
+<div class="video-overlay-btn">▶</div>
+</div>
+</a>
+<div style="font-size: 10px; margin-top: 4px; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{p['label']}</div>
+</div>
+<div id="lightbox-{safe_id}" class="lightbox">
+<a href="#" class="close-lightbox">&times;</a>
+<iframe src="{p['embed_video_url']}" width="80%" height="80%" style="border:none; background:#000; border-radius:6px;" allow="autoplay"></iframe>
+</div>"""
+            else:
+                # Foto Standar biasa
+                item_html = f"""<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox">
 <div class="photo-card">
 <label for="hide-{safe_id}" class="exclude-btn" title="Hide">&times;</label>
 <a href="#lightbox-{safe_id}"><img src="{p['thumb_url']}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 4px; border: 1px solid #555;"/></a>
