@@ -102,163 +102,182 @@ else:
     def susun_nama_dropdown(row):
         s_id = row['matched_site_sup'] if pd.notna(row['matched_site_sup']) else row['site_clean_sheet']
         s_name = row['site_name'] if pd.notna(row.get('site_name')) else 'UNKNOWN NAME'
-        return f"[{s_id}] ➔ {s_name}"
+        s_class = row['site_class'] if pd.notna(row.get('site_class')) else '-'
+        s_grid = row['grid_category_new'] if pd.notna(row.get('grid_category_new')) else '-'
+        s_hub = row['hub_site'] if pd.notna(row.get('hub_site')) else '-'
+        return f"[{s_id}] ➔ {s_name} ({s_class} • {s_grid} • {s_hub})"
         
     df_merged['dropdown_label'] = df_merged.apply(susun_nama_dropdown, axis=1)
 
     # --- CSS CUSTOM ---
     st.markdown("""<style>
-    .block-container { padding-top: 3.5rem !important; padding-bottom: 0rem !important; }
-    .ppt-card-blue { background-color: #1e3d59; color: white; padding: 10px; border-radius: 6px; margin-bottom: 8px; border-left: 5px solid #ffc13b; }
-    .ppt-card-gold { background-color: #ffc13b; color: #1e3d59; padding: 10px; border-radius: 6px; margin-bottom: 8px; border-left: 5px solid #1e3d59; }
+    .block-container { padding-top: 3.2rem !important; padding-bottom: 1rem !important; }
+    .ppt-header { background-color: #d32f2f; padding: 10px 20px; border-radius: 8px; margin-bottom: 15px; color: white; display: flex; justify-content: space-between; align-items: center; }
+    .ppt-card-blue { background-color: #1e3d59; color: white; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #ffc13b; }
+    .ppt-card-gold { background-color: #ffc13b; color: #1e3d59; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #1e3d59; }
     .gallery-container { display: flex; overflow-x: auto; padding: 10px; background-color: #111; border-radius: 8px; border: 1px solid #333; }
     .photo-card { flex: 0 0 auto; width: 110px; margin-right: 12px; text-align: center; position: relative; }
     .hide-checkbox { display: none; }
     .hide-checkbox:checked + .photo-card { display: none; }
     .exclude-btn { position: absolute; top: 1px; right: 8px; background: rgba(211,47,47,0.9); color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; line-height: 16px; cursor: pointer; font-weight: bold; z-index: 10; }
-    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.96); z-index: 99999999 !important; justify-content: center; align-items: center; }
+    .lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999999; justify-content: center; align-items: center; }
     .lightbox:target { display: flex; }
     .lightbox img, .lightbox iframe { max-width: 80%; max-height: 80%; border-radius: 6px; }
-    .lightbox .close-lightbox { position: absolute; top: 65px; right: 40px; color: #fff; font-size: 45px; text-decoration: none; font-weight: bold; z-index: 99999999 !important; }
-    .lightbox .nav-arrow { position: absolute; top: 50%; color: #fff; font-size: 50px; font-weight: bold; text-decoration: none; transform: translateY(-50%); padding: 20px; z-index: 99999999 !important; text-shadow: 0px 2px 8px #000; }
-    .lightbox .prev-arrow { left: 40px; }
-    .lightbox .next-arrow { right: 40px; }
-    .findings-grid { display: grid; grid-template-columns: auto auto; gap: 6px 12px; background-color: #262730; padding: 10px; border-radius: 6px; font-size: 12px; margin-bottom: 5px; border: 1px solid #444; }
-    .f-item { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 2px; }
-    .custom-footer { text-align: center; font-size: 11px; color: #666; margin-top: 15px; border-top: 1px solid #222; padding-top: 6px; }
+    .lightbox .close-lightbox { position: absolute; top: 20px; right: 30px; color: #fff; font-size: 40px; text-decoration: none; z-index: 99999999;}
+    
+    /* CSS CAPTION UNTUK JUDUL FOTO POPUP */
+    .lightbox .caption-text { position: absolute; bottom: 30px; color: #ffc13b; font-size: 18px; font-weight: bold; text-align: center; width: 100%; text-shadow: 0px 2px 4px rgba(0,0,0,0.8); z-index: 99999999; font-family: sans-serif; letter-spacing: 0.5px; }
+    
+    /* Overlay icon play video */
     .video-overlay-btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(211, 47, 47, 0.85); color: white; border-radius: 50%; width: 26px; height: 24px; line-height: 24px; font-size: 11px; font-weight: bold; pointer-events: none; }
+    
+    div[data-testid="stMetric"] { background-color: #262730; padding: 5px 10px; border-radius: 4px; border: 1px solid #444; }
+    .findings-grid { display: grid; grid-template-columns: auto auto; gap: 8px 15px; background-color: #262730; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; border: 1px solid #444; }
+    .f-item { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 4px; }
+    .custom-footer { text-align: center; font-size: 12px; color: #888; margin-top: 30px; border-top: 1px solid #333; padding-top: 10px; }
     </style>""", unsafe_allow_html=True)
 
-    # --- ROW 1: HEADER ---
+    # --- ROW 1: TOP BAR TITLE SLIDE ---
     col_head_title, col_head_select = st.columns([1.8, 1.2])
     with col_head_title:
-        st.markdown("""<div style='background: linear-gradient(135deg, #ed1c24 0%, #b71c1c 50%, #1a1a1a 100%); padding: 12px 20px; border-radius: 6px; color: white; border-left: 6px solid #ffc13b; box-shadow: 0 4px 6px rgba(0,0,0,0.3);'><h3 style='margin:0; font-size:22px; font-weight:900; letter-spacing: 0.5px;'>🚀 TASK FORCE 348 <span style='color: #ffc13b;'>|</span> NOP PALANGKARAYA</h3><p style='margin: 2px 0 0 0; font-size: 12px; opacity: 0.9; font-weight: 500;'>TELECOMMUNICATION & NETWORK OPERATION DASHBOARD</p></div>""", unsafe_allow_html=True)
+        st.markdown("""<div style='background-color: #d32f2f; padding: 8px 15px; border-radius: 6px; color: white;'>
+            <h3 style='margin:0; font-size:20px; font-weight:bold;'>Task Force 348 | NOP PALANGKARAYA</h3>
+        </div>""", unsafe_allow_html=True)
     with col_head_select:
-        label_pilihan = st.selectbox("🎯 Target Monitoring:", sorted(df_merged['dropdown_label'].unique()), label_visibility="collapsed")
+        label_pilihan = st.selectbox("🎯 Target Monitoring Site ID:", sorted(df_merged['dropdown_label'].unique()), label_visibility="collapsed")
 
     data_site = df_merged[df_merged['dropdown_label'] == label_pilihan].iloc[0]
-    st.markdown(f"<p style='text-align: right; margin: -5px 5px 8px 0; font-size: 13px;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
+    
+    st.markdown(f"<p style='text-align: right; margin: -10px 5px 10px 0; font-size: 13px;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
 
-    # --- ROW 2: MAIN GRID (4 COLUMNS) ---
-    c1, c2, c3, c4 = st.columns([1, 1.2, 1.2, 1])
+    # --- ROW 2: MAIN GRID (3 COLUMNS) ---
+    col1, col2, col3 = st.columns([1, 0.9, 1.3])
 
-    # KOLOM 1: SITE MASTER SPECS
-    with c1:
-        st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>📋 Site Master Specification</b></div>", unsafe_allow_html=True)
-        master_list = {
+    with col1:
+        st.markdown("<div class='ppt-card-blue'><b style='font-size:15px;'>📋 Site Master Specification</b></div>", unsafe_allow_html=True)
+        info_dasar = {
             "Parameter": ["Site ID", "Site Name", "Class", "Grid", "Hub", "Phase", "Grounding KWH"],
             "Value": [
-                data_site.get('site_id', '-'), data_site.get('site_name', '-'),
-                data_site.get('site_class', '-'), data_site.get('grid_category_new', '-'),
-                data_site.get('hub_site', '-'), data_site.get('Phase PLN', '-'),
+                data_site['site_id'] if pd.notna(data_site.get('site_id')) else '-',
+                data_site['site_name'] if pd.notna(data_site.get('site_name')) else '-',
+                data_site['site_class'] if pd.notna(data_site.get('site_class')) else '-',
+                data_site['grid_category_new'] if pd.notna(data_site.get('grid_category_new')) else '-',
+                data_site['hub_site'] if pd.notna(data_site.get('hub_site')) else '-',
+                data_site.get('Phase PLN', '-'),
                 data_site.get('Grounding KWH', '-')
             ]
         }
-        st.dataframe(pd.DataFrame(master_list), hide_index=True, use_container_width=True, height=350)
+        st.dataframe(pd.DataFrame(info_dasar), hide_index=True, use_container_width=True, height=245)
 
-    # KOLOM 2: TECHNICAL DETAIL (20 ITEMS)
-    with c2:
-        st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>⚙️ Site Technical Detailed Specs</b></div>", unsafe_allow_html=True)
-        tech_mapping = [
-            ("Main Power", "Main Power"), ("Daya PLN", "Daya PLN"), ("Kapasitas MCB", "Kapasitas MCB"),
-            ("Tegangan R-N", "Tegangan PLN (R-N)"), ("Tegangan S-N", "Tegangan PLN (S-N)"), ("Tegangan T-N", "Tegangan PLN (T-N)"),
-            ("Arus R", "Beban PLN (R)"), ("Arus S", "Beban PLN (S)"), ("Arus T", "Beban PLN (T)"),
-            ("Type Recti 1", "Type Rectifier"), ("Module 1", "Jumlah Module"), ("Type Batt 1", "Type Battery"),
-            ("Jumlah Batt 1", "Jumlah Battery"), ("DC Voltage 1", "DC Voltage"), ("Load Current 1", "Rectifier Current"),
-            ("Type Recti 2", "Type Rectifier 2"), ("Module 2", "Jumlah Module 2"), ("Type Batt 2", "Type Battery 2"),
-            ("Jumlah Batt 2", "Jumlah Battery 2"), ("Load Current 2", "Load current recti 2")
-        ]
-        tech_data = {"Detail Parameter": [m[0] for m in tech_mapping], "Value": [data_site.get(m[1], '-') for m in tech_mapping]}
-        st.dataframe(pd.DataFrame(tech_data), hide_index=True, use_container_width=True, height=350)
+    with col2:
+        st.markdown("<div class='ppt-card-blue'><b style='font-size:15px;'>⚡ Kelistrikan & Power Grid</b></div>", unsafe_allow_html=True)
+        vm1, vm2 = st.columns(2)
+        with vm1:
+            st.metric(label="Tegangan R-N", value=f"{data_site.get('Tegangan PLN (R-N)', '-')} V")
+            st.metric(label="Tegangan S-N", value=f"{data_site.get('Tegangan PLN (S-N)', '-')} V")
+            st.metric(label="Tegangan T-N", value=f"{data_site.get('Tegangan PLN (T-N)', '-')} V")
+            st.metric(label="G-N Grounding", value=f"{data_site.get('G-N Grounding ke Netral', '-')} V")
+        with vm2:
+            st.metric(label="Beban PLN (R)", value=f"{data_site.get('Beban PLN (R)', '-')} A")
+            st.metric(label="Beban PLN (S)", value=f"{data_site.get('Beban PLN (S)', '-')} A")
+            st.metric(label="Beban PLN (T)", value=f"{data_site.get('Beban PLN (T)', '-')} A")
 
-    # KOLOM 3: FINDINGS & GRAPH
-    with c3:
-        st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
-        st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
+    with col3:
+        st.markdown("<div class='ppt-card-gold'><b>🔍 Field Findings & Action Log</b></div>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class='findings-grid'>
+            <div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div>
+            <div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(Faulty: {data_site.get('Total Module faulty', '-')})</span></span></div>
+            <div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div>
+            <div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div>
+            <div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div>
+            <div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div>
+        </div>
+        """, unsafe_allow_html=True)
         
+        # FITUR 1: GRAFIK TREND AVAILABILITY 
         st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Weekly Availability Trend (Power & Transport)</b>", unsafe_allow_html=True)
         if not df_sup_inap.empty:
-            # Pastikan matching menggunakan Site ID yang sudah dibersihkan
             df_sup_inap['site_clean'] = df_sup_inap['site_id'].astype(str).apply(format_site_id)
-            df_site_avail = df_sup_inap[df_sup_inap['site_clean'] == data_site['site_clean_sheet']]
-            
-            if not df_site_avail.empty:
-                # Cari kolom avail secara cerdas
-                col_w = [c for c in df_site_avail.columns if any(x in c.lower() for x in ['week', 'minggu', 'date'])]
-                col_p = [c for c in df_site_avail.columns if any(x in c.lower() for x in ['power', 'pwr'])]
-                col_t = [c for c in df_site_avail.columns if any(x in c.lower() for x in ['transport', 'trans'])]
-                
-                if col_w and col_p and col_t:
-                    df_chart = df_site_avail[[col_w[0], col_p[0], col_t[0]]].copy()
-                    df_chart.columns = ['Week', 'Power (%)', 'Transport (%)']
-                    df_chart = df_chart.sort_values(by='Week')
-                    st.line_chart(df_chart.set_index('Week'), height=185)
+            d_trend = df_sup_inap[df_sup_inap['site_clean'] == data_site['site_clean_sheet']]
+            if not d_trend.empty:
+                cw = [c for c in d_trend.columns if any(x in c.lower() for x in ['week','minggu','date'])]
+                cp = [c for c in d_trend.columns if any(x in c.lower() for x in ['power','pwr'])]
+                ct = [c for c in d_trend.columns if any(x in c.lower() for x in ['transport','trans'])]
+                if cw and cp and ct:
+                    chart_data = d_trend[[cw[0], cp[0], ct[0]]].copy()
+                    chart_data[cp[0]] = pd.to_numeric(chart_data[cp[0]], errors='coerce')
+                    chart_data[ct[0]] = pd.to_numeric(chart_data[ct[0]], errors='coerce')
+                    chart_data.columns = ['Week', 'Power (%)', 'Transport (%)']
+                    st.line_chart(chart_data.sort_values('Week').set_index('Week'), height=150)
                 else: st.caption("ℹ️ Format kolom inap_data tidak sesuai.")
-            else: st.caption(f"ℹ️ Belum ada data mingguan untuk {data_site['site_clean_sheet']} di inap_data.")
+            else: st.caption("ℹ️ Data trend ketersediaan untuk site ini belum tercatat di database inap_data.")
+        else: st.caption("ℹ️ Gagal memuat tabel inap_data.")
 
-    # KOLOM 4: RECOMMENDATION
-    with c4:
-        st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Action Plan</b></div>", unsafe_allow_html=True)
-        reko_val = data_site.get('Rekomendasi Perbaikan', '')
-        if pd.isna(reko_val): reko_val = ""
-        rekomendasi_input = st.text_area("Rekomendasi Perbaikan:", value=str(reko_val), placeholder="Input rekomendasi...", key="input_rekomendasi", height=230, label_visibility="collapsed")
+        # REKOMENDASI BOX
+        rekomendasi_sekarang = data_site.get('Rekomendasi Koordinator', '')
+        if pd.isna(rekomendasi_sekarang): rekomendasi_sekarang = ""
+        rekomendasi_input = st.text_area("Rekomendasi Koordinator Lapangan:", value=str(rekomendasi_sekarang), placeholder="Input tindakan di sini...", key="input_rekomendasi", height=68, label_visibility="collapsed")
         
-        @st.dialog("Konfirmasi")
-        def popup_konfirmasi(teks):
-            st.write(f"Simpan rekomendasi untuk site **{data_site[kolom_site_sheet]}**?")
-            st.info(f"📝 {teks}")
-            b1, b2 = st.columns(2)
-            with b1:
-                if st.button("👍 Ya", use_container_width=True):
-                    with st.spinner("Saving..."):
-                        s, p = update_rekomendasi_gsheet(data_site[kolom_site_sheet], teks)
-                        if s: 
-                            st.success("Tersimpan!")
-                            st.cache_data.clear()
-                            st.rerun()
-                        else: st.error(f"Gagal: {p}")
-            with b2:
-                if st.button("❌ Tidak", use_container_width=True): st.rerun()
+        if st.button("💾 Push Update Data", use_container_width=True):
+            if rekomendasi_input.strip() != "":
+                with st.spinner("Pushing..."):
+                    if update_rekomendasi_gsheet(data_site[kolom_site_sheet], rekomendasi_input):
+                        st.cache_data.clear()
+                        st.rerun()
 
-        if st.button("💾 Push Update", use_container_width=True):
-            if rekomendasi_input.strip() == "": st.warning("Isi data!")
-            else: popup_konfirmasi(rekomendasi_input)
-
-    # --- ROW 3: EVIDENCE ---
-    st.markdown("<div style='margin-top:10px; font-size:14px;'><b>📁 Evidence & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
-    all_photos, all_csvs, seen_urls = [], [], set()
+    # --- ROW 3: FOOTER ROW (GALLERY SCANNER & FILE ATTACHMENTS) ---
+    all_detected_photos = []
+    all_detected_csvs = []
+    seen_urls = set()
     
     for col_name in df_sheet.columns:
         val = data_site.get(col_name)
         if pd.isna(val) or not val: continue
-        urls = re.findall(r'(https?://[^\s,"\'\}]+)', str(val))
+        urls = re.findall(r'(https?://[^\s,"\'\}<>]+)', str(val))
+        
         for idx, url in enumerate(urls):
             if url in seen_urls: continue
             seen_urls.add(url)
-            is_csv = "csv" in col_name.lower() or ".csv" in url.lower()
-            is_video = "voltage" in col_name.lower() or ".mp4" in url.lower()
-            thumb_url, zoom_url, dl_url, embed_url = konversi_link_gdrive(url)
-            label = f"{clean_label_name(col_name)} #{idx+1}" if len(urls) > 1 else clean_label_name(col_name)
+            
+            # FITUR 2: IDENTIFIKASI FILE CSV/XLSX
+            is_csv = "csv" in col_name.lower() or ".csv" in url.lower() or "data" in col_name.lower() or ".xlsx" in url.lower()
+            is_video = "voltage" in col_name.lower() or "backup" in col_name.lower() or ".mp4" in url.lower() or ".mov" in url.lower()
+            
+            thumb_url, zoom_url, download_url, embed_url = konversi_link_gdrive(url)
+            base_label = clean_label_name(col_name)
+            final_label = f"{base_label} #{idx+1}" if len(urls) > 1 else base_label
+            
             if thumb_url and not is_csv:
-                all_photos.append({'label': label, 'col': col_name, 'idx': idx, 'thumb': thumb_url, 'zoom': zoom_url, 'is_vid': is_video, 'embed': embed_url})
-            elif is_csv: all_csvs.append({'label': label, 'url': dl_url})
+                all_detected_photos.append({ 'label': final_label, 'col_name': col_name, 'idx': idx, 'thumb_url': thumb_url, 'zoom_url': zoom_url, 'is_video': is_video, 'embed_video_url': embed_url })
+            elif is_csv:
+                all_detected_csvs.append({ 'label': final_label, 'download_url': download_url if download_url else url })
 
-    b_csv, b_gal = st.columns([0.8, 2.2])
-    with b_csv:
-        if all_csvs:
-            for f in all_csvs: st.link_button(f"📥 {f['label']}", f['url'], use_container_width=True)
-        else: st.caption("No CSV Files.")
-    with b_gal:
-        html_str = ""
-        total = len(all_photos)
-        for i, p in enumerate(all_photos):
-            sid = re.sub(r'[^a-zA-Z0-9]', '', f"{p['col']}{p['idx']}")
-            sid_p = re.sub(r'[^a-zA-Z0-9]', '', f"{all_photos[(i-1)%total]['col']}{all_photos[(i-1)%total]['idx']}")
-            sid_n = re.sub(r'[^a-zA-Z0-9]', '', f"{all_photos[(i+1)%total]['col']}{all_photos[(i+1)%total]['idx']}")
-            nav = f'<a href="#lightbox-{sid_p}" class="nav-arrow prev-arrow">❮</a><a href="#lightbox-{sid_n}" class="nav-arrow next-arrow">❯</a>'
-            content = f'<iframe src="{p["embed"]}" width="80%" height="80%" style="border:none; background:#000;" allow="autoplay"></iframe>' if p['is_vid'] else f'<img src="{p["zoom"]}">'
-            ovr = '<div class="video-overlay-btn">▶</div>' if p['is_vid'] else ''
-            html_str += f'<input type="checkbox" id="hide-{sid}" class="hide-checkbox"><div class="photo-card"><label for="hide-{sid}" class="exclude-btn">&times;</label><a href="#lightbox-{sid}"><div style="position:relative;"><img src="{p["thumb"]}" style="width:100px; height:75px; object-fit:cover; border:1px solid #555;"/><div class="video-overlay-btn">{ovr}</div></div></a><div style="font-size:9px; color:#ccc; overflow:hidden;">{p["label"]}</div></div><div id="lightbox-{sid}" class="lightbox"><a href="#" class="close-lightbox">&times;</a>{nav}{content}</div>'
-        if html_str: st.markdown(f'<div class="gallery-container">{html_str}</div>', unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 5px; margin-bottom: 2px; font-size:14px;'><b>📁 Attachments & Dokumentasi Slide</b></div>", unsafe_allow_html=True)
+    
+    bot_csv, bot_gal = st.columns([0.8, 2.2])
+    with bot_csv:
+        if all_detected_csvs:
+            for csv_file in all_detected_csvs:
+                st.link_button(f"📥 {csv_file['label']}", csv_file['download_url'], use_container_width=True)
+        else:
+            st.caption("No CSV Data uploaded.")
 
+    with bot_gal:
+        html_items = []
+        for p in all_detected_photos:
+            safe_id = re.sub(r'[^a-zA-Z0-9]', '', f"{p['col_name']}{p['idx']}")
+            
+            # FITUR 3: PENAMBAHAN TEKS CAPTION <div class="caption-text"> DI BAWAH FOTO POPUP
+            if p['is_video'] and p['embed_video_url']:
+                item_html = f'<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox"><div class="photo-card"><label for="hide-{safe_id}" class="exclude-btn" title="Hide">&times;</label><a href="#lightbox-{safe_id}"><div style="position: relative; width: 100px; height: 75px;"><img src="{p["thumb_url"]}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 4px; border: 1px solid #555; opacity: 0.7;"/><div class="video-overlay-btn">▶</div></div></a><div style="font-size: 10px; margin-top: 4px; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{p["label"]}</div></div><div id="lightbox-{safe_id}" class="lightbox"><a href="#" class="close-lightbox">&times;</a><iframe src="{p["embed_video_url"]}" width="80%" height="80%" style="border:none; background:#000; border-radius:6px;" allow="autoplay"></iframe><div class="caption-text">{p["label"]}</div></div>'
+            else:
+                item_html = f'<input type="checkbox" id="hide-{safe_id}" class="hide-checkbox"><div class="photo-card"><label for="hide-{safe_id}" class="exclude-btn" title="Hide">&times;</label><a href="#lightbox-{safe_id}"><img src="{p["thumb_url"]}" style="width: 100px; height: 75px; object-fit: cover; border-radius: 4px; border: 1px solid #555;"/></a><div style="font-size: 10px; margin-top: 4px; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{p["label"]}</div></div><div id="lightbox-{safe_id}" class="lightbox"><a href="#" class="close-lightbox">&times;</a><img src="{p["zoom_url"]}"><div class="caption-text">{p["label"]}</div></div>'
+            html_items.append(item_html)
+                
+        if html_items:
+            st.markdown(f"""<div class="gallery-container">{"".join(html_items)}</div>""", unsafe_allow_html=True)
+        else:
+            st.caption("No unique documentation photos found.")
+            
     st.markdown("<div class='custom-footer'>© 2026 | Created with ❤️ by Fauzi Ramdani - 97122</div>", unsafe_allow_html=True)
