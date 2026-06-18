@@ -21,8 +21,14 @@ SUPABASE_TABLE_INAP = "inap_data"
 def format_site_id(site_id):
     if pd.isna(site_id) or str(site_id).strip() == "": return "-"
     s = str(site_id).strip().upper().replace(" ", "").replace("-", "").replace("_", "")
-    match = re.search(r'[A-Z]{3}\d{3}', s)
-    if match: return match.group(0)
+    
+    # Deteksi pola 3 huruf diikuti angka berapapun (1 sampai 3 digit)
+    match = re.search(r'([A-Z]{3})(\d+)', s)
+    if match:
+        huruf = match.group(1)
+        angka = match.group(2)
+        return f"{huruf}{angka.zfill(3)}" # Mengubah otomatis KKP7 atau KKP07 jadi KKP007 saklek
+        
     return re.sub(r'^K+P', 'KKP', s)
 
 def clean_label_name(name):
@@ -86,7 +92,8 @@ def load_data_from_google_sheets():
 
 @st.cache_data(ttl=600)
 def load_data_from_supabase(table_name):
-    url = f"{SUPABASE_URL}/rest/v1/{table_name}?select=*"
+    # Ditambahkan &limit=10000 di ujung URL agar data mingguan lo yang numpuk gak kepotong lagi
+    url = f"{SUPABASE_URL}/rest/v1/{table_name}?select=*&limit=10000"
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
     try:
         response = requests.get(url, headers=headers)
