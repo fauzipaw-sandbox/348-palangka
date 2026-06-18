@@ -205,7 +205,6 @@ else:
     data_site = df_merged[df_merged['dropdown_label'] == label_pilihan].iloc[0]
     st.markdown(f"<p style='text-align: right; margin: -10px 5px 8px 0; font-size: 13px;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
 
-    # VARIABEL INI HARUS ADA DI SINI BIAR GAK ERROR
     t_id_asli = str(data_site.get('site_id', '')).strip()
     t_id_clean = str(data_site.get('site_clean_sheet', '')).strip()
 
@@ -358,10 +357,12 @@ else:
         else: 
             st.caption(f"ℹ️ Belum ada data harian untuk site ini di tabel inap_data.")
 
+    # KOLOM 4: FINDINGS & ACTION PLAN
     with c4:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Findings & Action Plan</b></div>", unsafe_allow_html=True)
         
-        kolom_finding = next((c for c in df_sheet.columns if "hasil" in str(c).lower() and "analisa" in str(c).lower()), 'Hasil Analisa')
+        # FIX Python: Pencarian super kebal typo kata dasar 'analis' untuk narik data ke text_area
+        kolom_finding = next((c for c in df_sheet.columns if "hasil" in str(c).lower() and "analis" in str(c).lower()), 'Hasil Analisa')
         finding_val = data_site.get(kolom_finding, '')
         if pd.isna(finding_val): finding_val = ""
         st_finding_input = st.text_area(
