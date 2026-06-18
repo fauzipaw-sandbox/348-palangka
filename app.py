@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import re
 import difflib
+import altair as alt
 
 # Konfigurasi halaman agar fullscreen, responsif, dan rapi ala slide PPT
 st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
@@ -87,7 +88,6 @@ def load_data_from_supabase_dapot():
         return pd.DataFrame()
     except: return pd.DataFrame()
 
-# FITUR: Pencarian Multi-Varian Site ID
 def fetch_inap_for_site(site_clean, site_asli):
     variations = set([str(site_clean).strip(), str(site_asli).strip()])
     if site_clean:
@@ -110,7 +110,7 @@ df_sheet = load_data_from_google_sheets()
 df_sup_dapot = load_data_from_supabase_dapot()
 
 if df_sheet.empty or df_sup_dapot.empty:
-    st.error("🚨 Gagal memuat data utama! Cek koneksi Google Sheet & Supabase Credentials.")
+    st.error("🚨 Gagal memuat data utama! Cek koneksi Google Sheet (Geser tab ke paling kiri) & Supabase Credentials.")
 else:
     kolom_site_sheet = 'Site' if 'Site' in df_sheet.columns else ([c for c in df_sheet.columns if "site" in c.lower() or "id" in c.lower()] + [df_sheet.columns[0]])[0]
     df_sheet['site_clean_sheet'] = df_sheet[kolom_site_sheet].apply(format_site_id)
@@ -192,12 +192,12 @@ else:
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH (FIX PERHITUNGAN WEEK & SORTING KRONOLOGIS)
+    # KOLOM 3: FINDINGS & GRAPH (FIXED GRANULAR DAILY PERIOD & DYNAMIC TARGET LINE)
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
         
-        st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Weekly Availability Trend</b>", unsafe_allow_html=True)
+        st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Daily Availability Trend</b>", unsafe_allow_html=True)
         
         t_id_asli = str(data_site.get('site_id', '')).strip()
         t_id_clean = str(data_site.get('site_clean_sheet', '')).strip()
@@ -205,58 +205,69 @@ else:
         df_trend = fetch_inap_for_site(t_id_clean, t_id_asli)
             
         if not df_trend.empty:
-            # 1. Cari kolom tanggal/period
-            col_date = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['period', 'date', 'waktu', 'tgl', 'tanggal', 'time'])), None)
+            # 1. Deteksi Kolom Tanggal Saklek nyari kata 'period' / 'periode' duluan
+            col_date = next((c for c in df_trend.columns if any(k == str(c).lower().strip() for k in ['period', 'periode'])), None)
+            if not col_date:
+                col_date = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['date', 'waktu', 'tgl', 'tanggal', 'time', 'timestamp'])), None)
             
-            # 2. Cari kolom Availability (Hanya yang mengandung 'avail' tapi BUKAN power/transport)
+            # 2. Deteksi Kolom Availability Utama (Bukan power / transport)
             col_avail = None
             for c in df_trend.columns:
-                c_lower = str(c).lower()
+                c_lower = str(c).lower().strip()
                 if 'avail' in c_lower and 'power' not in c_lower and 'pwr' not in c_lower and 'trans' not in c_lower:
                     col_avail = c
                     break
-            
             if not col_avail:
                 col_avail = next((c for c in df_trend.columns if 'avail' in str(c).lower()), None)
 
             if col_date and col_avail:
                 chart_data = df_trend[[col_date, col_avail]].copy()
                 
-                # --- PENGUBAH TANGGAL (MEMBACA FORMAT LOKAL DENGAN AMAN) ---
-                # Tambahkan dayfirst=True agar tgl seperti 05-01-2026 dibaca 5 Jan, bukan 1 Mei
+                # Konversi Tanggal Kronologis
                 chart_data[col_date] = pd.to_datetime(chart_data[col_date], errors='coerce', dayfirst=True)
                 chart_data = chart_data.dropna(subset=[col_date])
-                
-                # Buang tahun yang gak masuk akal (dibawah 2000)
                 chart_data = chart_data[(chart_data[col_date].dt.year > 2000) & (chart_data[col_date].dt.year < 2100)]
                 
-                # --- PEMBERSIH ANGKA KETERSEDIAAN ---
+                # Pembersihan Nilai Angka %
                 chart_data[col_avail] = chart_data[col_avail].astype(str).str.replace('%', '').str.replace(',', '.')
                 chart_data[col_avail] = pd.to_numeric(chart_data[col_avail], errors='coerce')
                 chart_data = chart_data.dropna(subset=[col_avail])
                 
                 if not chart_data.empty:
-                    # --- PERHITUNGAN WEEK (PASTI SENIN SAMPAI MINGGU) ---
-                    # Menarik semua tanggal mundur ke hari Senin terdekat (0 = Senin)
-                    chart_data['Week'] = chart_data[col_date] - pd.to_timedelta(chart_data[col_date].dt.weekday, unit='D')
-                    # Normalisasi waktu ke tengah malam agar bersih
-                    chart_data['Week'] = pd.to_datetime(chart_data['Week'].dt.date)
+                    # Urutkan berdasarkan tanggal daily secara kronologis
+                    chart_data = chart_data.sort_values(by=col_date)
                     
-                    # Agregasi (Rata-rata) berdasarkan hari Senin tersebut
-                    weekly_chart = chart_data.groupby('Week')[col_avail].mean().reset_index()
+                    # Logika Penentuan Target Line berdasarkan Site Class
+                    site_class = str(data_site.get('site_class', '')).upper().strip()
+                    if 'DIAMOND' in site_class: target_val = 99.6
+                    elif 'PLATINUM' in site_class: target_val = 99.2
+                    elif 'GOLD' in site_class: target_val = 99.0
+                    elif 'SILVER' in site_class: target_val = 97.0
+                    elif 'BRONZE' in site_class: target_val = 95.0
+                    else: target_val = 95.0
                     
-                    # --- FIX KRONOLOGIS ---
-                    # Urutkan berdasarkan Datetime aslinya
-                    weekly_chart = weekly_chart.sort_values(by='Week')
+                    chart_data['Target'] = target_val
                     
-                    # Biarkan index tetap bertipe Datetime, Streamlit akan otomatis nge-format tampilannya
-                    # dan menjaganya agar tidak loncat secara alfabetis
-                    weekly_chart.set_index('Week', inplace=True)
-                    weekly_chart.columns = ['Availability (%)']
+                    # Gambar Layer Chart menggunakan Altair ( Hard Dependency Streamlit - Bebas Error )
+                    df_altair = chart_data.reset_index(drop=True)
                     
-                    st.line_chart(weekly_chart, height=155)
+                    base = alt.Chart(df_altair).encode(
+                        x=alt.X(f'{col_date}:T', axis=alt.Axis(format='%d %b', title=None))
+                    )
+                    
+                    # Garis utama Availability (Biru muda solid)
+                    line_avail = base.mark_line(color='#00E5FF', strokeWidth=2).encode(
+                        y=alt.Y(f'{col_avail}:Q', scale=alt.Scale(zero=False), title='Availability (%)')
+                    )
+                    
+                    # Garis Target putus-putus merah samar-samar
+                    line_target = base.mark_line(color='#ff5252', strokeDash=[4, 4], opacity=0.6, strokeWidth=1.5).encode(
+                        y=alt.Y('Target:Q')
+                    )
+                    
+                    st.altair_chart(alt.layer(line_avail, line_target).properties(height=155), use_container_width=True)
                 else:
-                    st.caption("ℹ️ Data angka ketersediaan atau tanggal pada site ini kosong/tidak valid.")
+                    st.caption("ℹ/ Data ketersediaan site ini kosong atau tidak valid.")
             else:
                 st.caption(f"ℹ️ Format kolom tanggal atau availability tidak ditemukan.")
                 
