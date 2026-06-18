@@ -87,11 +87,9 @@ def load_data_from_supabase_dapot():
         return pd.DataFrame()
     except: return pd.DataFrame()
 
-# FITUR: Pencarian Multi-Varian Site ID (KKN075 & KKN75 sekaligus)
+# FITUR: Pencarian Multi-Varian Site ID
 def fetch_inap_for_site(site_clean, site_asli):
     variations = set([str(site_clean).strip(), str(site_asli).strip()])
-    
-    # Kalau polanya ada 0 di tengah (Contoh: KKN075), bikin variasi tanpa 0 (KKN75)
     if site_clean:
         match = re.search(r'([A-Z]+)0+(\d+)', site_clean)
         if match: variations.add(f"{match.group(1)}{match.group(2)}")
@@ -112,7 +110,7 @@ df_sheet = load_data_from_google_sheets()
 df_sup_dapot = load_data_from_supabase_dapot()
 
 if df_sheet.empty or df_sup_dapot.empty:
-    st.error("🚨 Gagal memuat data utama! Cek koneksi Google Sheet (Geser tab ke paling kiri) & Supabase Credentials.")
+    st.error("🚨 Gagal memuat data utama! Cek koneksi Google Sheet & Supabase Credentials.")
 else:
     kolom_site_sheet = 'Site' if 'Site' in df_sheet.columns else ([c for c in df_sheet.columns if "site" in c.lower() or "id" in c.lower()] + [df_sheet.columns[0]])[0]
     df_sheet['site_clean_sheet'] = df_sheet[kolom_site_sheet].apply(format_site_id)
@@ -194,7 +192,7 @@ else:
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH (FIXED TANGGAL 1969 & WEEKLY AGGREGATION)
+    # KOLOM 3: FINDINGS & GRAPH (FIX PERHITUNGAN WEEK & SORTING KRONOLOGIS)
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
@@ -207,12 +205,10 @@ else:
         df_trend = fetch_inap_for_site(t_id_clean, t_id_asli)
             
         if not df_trend.empty:
-            # 1. Prioritaskan nyari kolom "period", kalau gak ada baru cari tanggal
-            col_date = next((c for c in df_trend.columns if 'period' in str(c).lower()), None)
-            if not col_date:
-                col_date = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['date', 'waktu', 'tgl', 'tanggal', 'time', 'timestamp'])), None)
+            # 1. Cari kolom tanggal/period
+            col_date = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['period', 'date', 'waktu', 'tgl', 'tanggal', 'time'])), None)
             
-            # 2. Cari Kolom Availability (BUKAN power/transport)
+            # 2. Cari kolom Availability (Hanya yang mengandung 'avail' tapi BUKAN power/transport)
             col_avail = None
             for c in df_trend.columns:
                 c_lower = str(c).lower()
@@ -226,32 +222,41 @@ else:
             if col_date and col_avail:
                 chart_data = df_trend[[col_date, col_avail]].copy()
                 
-                # --- PENGUBAH TANGGAL ANTI-1969 ---
-                # Karena format di Supabase udah beneran Date, kita pake to_datetime murni tanpa unit='D'
-                chart_data[col_date] = pd.to_datetime(chart_data[col_date], errors='coerce')
+                # --- PENGUBAH TANGGAL (MEMBACA FORMAT LOKAL DENGAN AMAN) ---
+                # Tambahkan dayfirst=True agar tgl seperti 05-01-2026 dibaca 5 Jan, bukan 1 Mei
+                chart_data[col_date] = pd.to_datetime(chart_data[col_date], errors='coerce', dayfirst=True)
                 chart_data = chart_data.dropna(subset=[col_date])
                 
-                # Buang tahun yang gak masuk akal (dibawah 2000 atau diatas 2100) biar grafik gak melebar
+                # Buang tahun yang gak masuk akal (dibawah 2000)
                 chart_data = chart_data[(chart_data[col_date].dt.year > 2000) & (chart_data[col_date].dt.year < 2100)]
                 
-                # --- PEMBERSIH ANGKA ---
+                # --- PEMBERSIH ANGKA KETERSEDIAAN ---
                 chart_data[col_avail] = chart_data[col_avail].astype(str).str.replace('%', '').str.replace(',', '.')
                 chart_data[col_avail] = pd.to_numeric(chart_data[col_avail], errors='coerce')
                 chart_data = chart_data.dropna(subset=[col_avail])
                 
                 if not chart_data.empty:
-                    # Agregasi Rata-rata Mingguan
-                    chart_data['Week'] = chart_data[col_date].dt.to_period('W').apply(lambda r: r.start_time)
+                    # --- PERHITUNGAN WEEK (PASTI SENIN SAMPAI MINGGU) ---
+                    # Menarik semua tanggal mundur ke hari Senin terdekat (0 = Senin)
+                    chart_data['Week'] = chart_data[col_date] - pd.to_timedelta(chart_data[col_date].dt.weekday, unit='D')
+                    # Normalisasi waktu ke tengah malam agar bersih
+                    chart_data['Week'] = pd.to_datetime(chart_data['Week'].dt.date)
+                    
+                    # Agregasi (Rata-rata) berdasarkan hari Senin tersebut
                     weekly_chart = chart_data.groupby('Week')[col_avail].mean().reset_index()
                     
-                    # Tampilan Tanggal
-                    weekly_chart['Week'] = weekly_chart['Week'].dt.strftime('%d %b %Y')
+                    # --- FIX KRONOLOGIS ---
+                    # Urutkan berdasarkan Datetime aslinya
+                    weekly_chart = weekly_chart.sort_values(by='Week')
+                    
+                    # Biarkan index tetap bertipe Datetime, Streamlit akan otomatis nge-format tampilannya
+                    # dan menjaganya agar tidak loncat secara alfabetis
                     weekly_chart.set_index('Week', inplace=True)
                     weekly_chart.columns = ['Availability (%)']
                     
                     st.line_chart(weekly_chart, height=155)
                 else:
-                    st.caption("ℹ️ Data ketersediaan site ini kosong atau tidak valid.")
+                    st.caption("ℹ️ Data angka ketersediaan atau tanggal pada site ini kosong/tidak valid.")
             else:
                 st.caption(f"ℹ️ Format kolom tanggal atau availability tidak ditemukan.")
                 
