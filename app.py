@@ -205,9 +205,6 @@ else:
     data_site = df_merged[df_merged['dropdown_label'] == label_pilihan].iloc[0]
     st.markdown(f"<p style='text-align: right; margin: -10px 5px 8px 0; font-size: 13px;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
 
-    t_id_asli = str(data_site.get('site_id', '')).strip()
-    t_id_clean = str(data_site.get('site_clean_sheet', '')).strip()
-
     # --- ROW 2: MAIN GRID (4 COLUMNS) ---
     c1, c2, c3, c4 = st.columns([1, 1.2, 1.2, 1])
 
@@ -357,23 +354,22 @@ else:
         else: 
             st.caption(f"ℹ️ Belum ada data harian untuk site ini di tabel inap_data.")
 
-    # KOLOM 4: FINDINGS & ACTION PLAN DENGAN FUZZY MATCH
+    # KOLOM 4: FINDINGS & ACTION PLAN (MENGUNCI KE HASIL ANALISA)
     with c4:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Findings & Action Plan</b></div>", unsafe_allow_html=True)
         
-        # 1. PENCARIAN CERDAS KOLOM FINDING & TAMPILANNYA
-        kolom_finding = next((c for c in df_sheet.columns if "remark" in str(c).lower() and "temuan" in str(c).lower()), 'Remark Temuan by RTS')
+        # FIX Python: Nyari kolom baru lo yang mengandung kata "hasil" dan "analisa"
+        kolom_finding = next((c for c in df_sheet.columns if "hasil" in str(c).lower() and "analisa" in str(c).lower()), 'Hasil Analisa')
         finding_val = data_site.get(kolom_finding, '')
         if pd.isna(finding_val): finding_val = ""
         st_finding_input = st.text_area(
-            "🔍 Remark Temuan by RTS:", 
+            "🔍 Hasil Analisa:", 
             value=str(finding_val), 
             placeholder="Tulis Final Finding di baris pertama...\n\n1. Detail Kondisi...", 
             key=f"input_finding_{t_id_clean}", 
             height=180
         )
         
-        # 2. PENCARIAN CERDAS KOLOM REKOMENDASI & TAMPILANNYA
         kolom_reko = next((c for c in df_sheet.columns if "rekomendasi" in str(c).lower()), 'Rekomendasi Perbaikan')
         reko_val = data_site.get(kolom_reko, '')
         if pd.isna(reko_val): reko_val = ""
@@ -388,7 +384,7 @@ else:
         @st.dialog("Konfirmasi Update")
         def popup_konfirmasi(teks_find, teks_reko):
             st.write(f"Simpan update data untuk site **{data_site[kolom_site_sheet]}**?")
-            st.info(f"**🔍 Finding:**\n{teks_find}\n\n**📝 Rekomendasi:**\n{teks_reko}")
+            st.info(f"**🔍 Hasil Analisa:**\n{teks_find}\n\n**📝 Rekomendasi:**\n{teks_reko}")
             b1, b2 = st.columns(2)
             with b1:
                 if st.button("👍 Ya, Simpan", use_container_width=True):
