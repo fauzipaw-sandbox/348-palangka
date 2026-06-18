@@ -34,7 +34,7 @@ def cari_site_terdekat(site_appsheet, list_site_supabase):
     cocok = difflib.get_close_matches(site_appsheet, list_site_supabase, n=1, cutoff=0.6)
     return cocok[0] if cocok else None
 
-def konversi_link_gdrive(url_tunggal):
+def konversions_link_gdrive(url_tunggal):
     if not url_tunggal or str(url_tunggal).strip() == "": return None, None, None, None
     link_bersih = str(url_tunggal).strip()
     file_id = None
@@ -88,6 +88,7 @@ def load_data_from_supabase_dapot():
         return pd.DataFrame()
     except: return pd.DataFrame()
 
+# FIX SAKLEK: Menggunakan filter exact case-insensitive (.ieq) agar data tidak bercampur dengan site lain
 def fetch_inap_for_site(site_clean, site_asli):
     variations = set([str(site_clean).strip(), str(site_asli).strip()])
     if site_clean:
@@ -97,7 +98,8 @@ def fetch_inap_for_site(site_clean, site_asli):
     valid_vars = [v for v in variations if v not in ["", "-", "nan"]]
     if not valid_vars: return pd.DataFrame()
     
-    filters = ",".join([f"site_id.ilike.*{v}*" for v in valid_vars])
+    # Menggunakan ieq untuk pencarian exact match murni tanpa wildcard asteris
+    filters = ",".join([f"site_id.ieq.{v}" for v in valid_vars])
     url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}?or=({filters})&limit=1000"
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
     try:
@@ -192,7 +194,7 @@ else:
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH (FIXED GRANULAR DAILY PERIOD & DYNAMIC TARGET LINE)
+    # KOLOM 3: FINDINGS & GRAPH (FIXED EXACT SINKRONISASI + SMOOTH ALTAIR)
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
@@ -205,12 +207,10 @@ else:
         df_trend = fetch_inap_for_site(t_id_clean, t_id_asli)
             
         if not df_trend.empty:
-            # 1. Deteksi Kolom Tanggal Saklek nyari kata 'period' / 'periode' duluan
             col_date = next((c for c in df_trend.columns if any(k == str(c).lower().strip() for k in ['period', 'periode'])), None)
             if not col_date:
                 col_date = next((c for c in df_trend.columns if any(k in str(c).lower() for k in ['date', 'waktu', 'tgl', 'tanggal', 'time', 'timestamp'])), None)
             
-            # 2. Deteksi Kolom Availability Utama (Bukan power / transport)
             col_avail = None
             for c in df_trend.columns:
                 c_lower = str(c).lower().strip()
@@ -223,21 +223,17 @@ else:
             if col_date and col_avail:
                 chart_data = df_trend[[col_date, col_avail]].copy()
                 
-                # Konversi Tanggal Kronologis
                 chart_data[col_date] = pd.to_datetime(chart_data[col_date], errors='coerce', dayfirst=True)
                 chart_data = chart_data.dropna(subset=[col_date])
                 chart_data = chart_data[(chart_data[col_date].dt.year > 2000) & (chart_data[col_date].dt.year < 2100)]
                 
-                # Pembersihan Nilai Angka %
                 chart_data[col_avail] = chart_data[col_avail].astype(str).str.replace('%', '').str.replace(',', '.')
                 chart_data[col_avail] = pd.to_numeric(chart_data[col_avail], errors='coerce')
                 chart_data = chart_data.dropna(subset=[col_avail])
                 
                 if not chart_data.empty:
-                    # Urutkan berdasarkan tanggal daily secara kronologis
                     chart_data = chart_data.sort_values(by=col_date)
                     
-                    # Logika Penentuan Target Line berdasarkan Site Class
                     site_class = str(data_site.get('site_class', '')).upper().strip()
                     if 'DIAMOND' in site_class: target_val = 99.6
                     elif 'PLATINUM' in site_class: target_val = 99.2
@@ -247,35 +243,28 @@ else:
                     else: target_val = 95.0
                     
                     chart_data['Target'] = target_val
-                    
-                    # Gambar Layer Chart menggunakan Altair ( Hard Dependency Streamlit - Bebas Error )
                     df_altair = chart_data.reset_index(drop=True)
                     
                     base = alt.Chart(df_altair).encode(
                         x=alt.X(f'{col_date}:T', axis=alt.Axis(format='%d %b', title=None))
                     )
                     
-                    # Garis utama Availability (Biru muda solid)
-                    line_avail = base.mark_line(color='#00E5FF', strokeWidth=2).encode(
+                    # FIX GRAPH SMOOTH: Ditambahkan interpolate='monotone' agar kurva garis melengkung rapi
+                    line_avail = base.mark_line(color='#00E5FF', strokeWidth=2, interpolate='monotone').encode(
                         y=alt.Y(f'{col_avail}:Q', scale=alt.Scale(zero=False), title='Availability (%)')
                     )
                     
-                    # Garis Target putus-putus merah samar-samar
                     line_target = base.mark_line(color='#ff5252', strokeDash=[4, 4], opacity=0.6, strokeWidth=1.5).encode(
                         y=alt.Y('Target:Q')
                     )
                     
                     st.altair_chart(alt.layer(line_avail, line_target).properties(height=155), use_container_width=True)
                 else:
-                    st.caption("ℹ/ Data ketersediaan site ini kosong atau tidak valid.")
+                    st.caption("ℹ️ Data ketersediaan site ini kosong atau tidak valid.")
             else:
                 st.caption(f"ℹ️ Format kolom tanggal atau availability tidak ditemukan.")
-                
-            with st.expander("🛠️ Cek Nama Kolom Asli inap_data"):
-                st.write("Kolom database:", df_trend.columns.tolist())
-                st.write("Data mentah:", df_trend.head(2))
         else: 
-            st.caption(f"ℹ️ Belum ada data untuk {t_id_asli} di tabel inap_data.")
+            st.caption(f"ℹ️ Belum ada data harian untuk {t_id_clean} di tabel inap_data.")
 
     # KOLOM 4: RECOMMENDATION
     with c4:
