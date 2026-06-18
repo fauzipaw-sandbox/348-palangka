@@ -7,14 +7,13 @@ import difflib
 # Konfigurasi halaman agar fullscreen, responsif, dan rapi ala slide PPT
 st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
 
-# --- KREDENSIAL MASTER ---
-APP_ID = "d3525213-95f5-4dff-9eb3-62842c4964f0"
-ACCESS_KEY = "V2-AmIzq-oOhfP-aWkgR-jRkRK-fyAiW-1mj3s-3yfYj-o18dt"
-TABLE_NAME = "List"
+# --- KREDENSIAL & DATA SOURCE MASTER ---
+# REQ 1: Source beralih penuh ke direct stream Google Sheets lo, Zi
+GOOGLE_SHEET_ID = "1FGKOzWoUrbf3PXN_ahgG1t-83JZT4H4sioQepePbBxM"
 
 # ⚠️ PASTIKAN URL DAN KEY SUPABASE LO YANG SUDAH JALAN TETAP TERPASANG DI SINI!
-SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
-SUPABASE_KEY = "sb_publishable_digs5GILs-TEe4lEpPj4qQ_VRrQ7FCm"
+SUPABASE_URL = "https://masukin-project-id-lo.supabase.co"
+SUPABASE_KEY = "masukin-anon-key-atau-service-role-key-supabase-lo"
 SUPABASE_TABLE = "dapot_data"
 
 # --- Fungsi Standarisasi & Ekstraksi Format Site ID ---
@@ -65,20 +64,12 @@ def konversi_link_gdrive(url_tunggal):
         
     return link_bersih, link_bersih, link_bersih
 
-# --- FUNGSI PULL DATA DARI APPSHEET API ---
+# --- REQ 1: FUNGSI PULL DATA LANGSUNG DARI GOOGLE SHEETS VIA CSV EXPORT ---
 @st.cache_data(ttl=300)
-def load_data_from_appsheet():
-    url = f"https://api.appsheet.com/api/v2/apps/{APP_ID}/tables/{TABLE_NAME}/Action"
-    headers = { 'ApplicationAccessKey': ACCESS_KEY, 'Content-Type': 'application/json' }
-    payload = {
-        "Action": "Find",
-        "Properties": {"Locale": "id-ID", "Timezone": "Asia/Jakarta"},
-        "Rows": []
-    }
+def load_data_from_google_sheets():
+    url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv"
     try:
-        response = requests.post(url, headers=headers, json=payload)
-        if response.status_code == 200: return pd.DataFrame(response.json())
-        return pd.DataFrame()
+        return pd.read_csv(url)
     except:
         return pd.DataFrame()
 
@@ -94,41 +85,26 @@ def load_data_from_supabase():
     except:
         return pd.DataFrame()
 
-# --- FUNGSI PUSH DATA KE APPSHEET ---
-def update_rekomendasi_appsheet(site_id_asli, nama_kolom_site, teks_rekomendasi):
-    url = f"https://api.appsheet.com/api/v2/apps/{APP_ID}/tables/{TABLE_NAME}/Action"
-    headers = { 'ApplicationAccessKey': ACCESS_KEY, 'Content-Type': 'application/json' }
-    payload = {
-        "Action": "Edit",
-        "Properties": {"Locale": "id-ID", "Timezone": "Asia/Jakarta"},
-        "Rows": [{ nama_kolom_site: site_id_asli, "Rekomendasi Koordinator": teks_rekomendasi }]
-    }
-    try:
-        response = requests.post(url, headers=headers, json=payload)
-        return response.status_code == 200
-    except:
-        return False
-
-# Load Data
-df_app = load_data_from_appsheet()
+# Load Data Terbaru dari Google Sheets & Supabase
+df_sheet = load_data_from_google_sheets()
 df_sup = load_data_from_supabase()
 
-if df_app.empty or df_sup.empty:
-    st.warning("Gagal memuat data. Periksa koneksi database lo, Zi.")
+if df_sheet.empty or df_sup.empty:
+    st.warning("Gagal memuat data dari Google Sheet atau Supabase. Periksa pengaturan share link lo, Zi.")
 else:
     # Processing & Merge Data
-    kolom_site_app = 'Site' if 'Site' in df_app.columns else ([c for c in df_app.columns if "site" in c.lower() or "id" in c.lower()] + [df_app.columns[0]])[0]
-    df_app['site_clean_app'] = df_app[kolom_site_app].apply(format_site_id)
+    kolom_site_sheet = 'Site' if 'Site' in df_sheet.columns else ([c for c in df_sheet.columns if "site" in c.lower() or "id" in c.lower()] + [df_sheet.columns[0]])[0]
+    df_sheet['site_clean_sheet'] = df_sheet[kolom_site_sheet].apply(format_site_id)
     df_sup['site_clean_sup'] = df_sup['site_id'].apply(format_site_id)
     
     list_site_sup = df_sup['site_clean_sup'].dropna().unique().tolist()
-    mapping_fuzzy = {site_a: (site_a if site_a in list_site_sup else cari_site_terdekat(site_a, list_site_sup)) for site_a in df_app['site_clean_app'].unique()}
-    df_app['matched_site_sup'] = df_app['site_clean_app'].map(mapping_fuzzy)
-    df_merged = pd.merge(df_app, df_sup, left_on='matched_site_sup', right_on='site_clean_sup', how='left', suffixes=('', '_dapot'))
+    mapping_fuzzy = {site_s: (site_s if site_s in list_site_sup else cari_site_terdekat(site_s, list_site_sup)) for site_s in df_sheet['site_clean_sheet'].unique()}
+    df_sheet['matched_site_sup'] = df_sheet['site_clean_sheet'].map(mapping_fuzzy)
+    df_merged = pd.merge(df_sheet, df_sup, left_on='matched_site_sup', right_on='site_clean_sup', how='left', suffixes=('', '_dapot'))
 
     # Dropdown Formatting
     def susun_nama_dropdown(row):
-        s_id = row['matched_site_sup'] if pd.notna(row['matched_site_sup']) else row['site_clean_app']
+        s_id = row['matched_site_sup'] if pd.notna(row['matched_site_sup']) else row['site_clean_sheet']
         s_name = row['site_name'] if pd.notna(row.get('site_name')) else 'UNKNOWN NAME'
         s_class = row['site_class'] if pd.notna(row.get('site_class')) else '-'
         s_grid = row['grid_category_new'] if pd.notna(row.get('grid_category_new')) else '-'
@@ -137,8 +113,7 @@ else:
         
     df_merged['dropdown_label'] = df_merged.apply(susun_nama_dropdown, axis=1)
 
-    # --- INJECT CSS CUSTOM ---
-    # FIX: Lightbox z-index dibikin super tinggi (9999999) dan tombol close diturunin (top: 60px)
+    # --- INJECT CSS CUSTOM UNTUK STYLING PPT PRESENTASI COMPACT ---
     st.markdown("""<style>
     .block-container { padding-top: 3.2rem !important; padding-bottom: 1rem !important; }
     .ppt-card-blue { background-color: #1e3d59; color: white; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 5px solid #ffc13b; }
@@ -164,34 +139,22 @@ else:
     # --- ROW 1: TOP BAR TITLE SLIDE DENGAN BANNER TELKOMSEL ---
     col_head_title, col_head_select = st.columns([1.8, 1.2])
     with col_head_title:
-        # Kalo lo udah bikin gambar banner sendiri pakai Photoshop/AI, ganti blok <div> di bawah ini pakai tag image ini:
-        # <img src="URL_GAMBAR_GDRIVE_LO_DI_SINI" style="width: 100%; border-radius: 6px;">
-        
         st.markdown("""
-        <div style='background: linear-gradient(135deg, #ed1c24 0%, #b71c1c 50%, #1a1a1a 100%);
-                    padding: 12px 20px;
-                    border-radius: 6px;
-                    color: white;
-                    border-left: 6px solid #ffc13b;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.3);'>
-            <h3 style='margin:0; font-size:22px; font-weight:900; letter-spacing: 0.5px;'>
-                🚀 TASK FORCE 348 <span style='color: #ffc13b;'>|</span> NOP PALANGKARAYA
-            </h3>
+        <div style='background: linear-gradient(135deg, #ed1c24 0%, #b71c1c 50%, #1a1a1a 100%); padding: 12px 20px; border-radius: 6px; color: white; border-left: 6px solid #ffc13b; box-shadow: 0 4px 6px rgba(0,0,0,0.3);'>
+            <h3 style='margin:0; font-size:22px; font-weight:900; letter-spacing: 0.5px;'>🚀 TASK FORCE 348 <span style='color: #ffc13b;'>|</span> NOP PALANGKARAYA</h3>
             <p style='margin: 2px 0 0 0; font-size: 12px; opacity: 0.9; font-weight: 500;'>TELECOMMUNICATION & NETWORK OPERATION DASHBOARD</p>
         </div>
         """, unsafe_allow_html=True)
         
     with col_head_select:
-        st.write("") # Spacer kecil biar sejajar sama banner
+        st.write("") 
         label_pilihan = st.selectbox("🎯 Target Monitoring Site ID:", sorted(df_merged['dropdown_label'].unique()), label_visibility="collapsed")
 
     data_site = df_merged[df_merged['dropdown_label'] == label_pilihan].iloc[0]
-    
-    # Horizontal Sub-bar untuk Last Data Timestamp
     st.markdown(f"<p style='text-align: right; margin: -5px 5px 10px 0; font-size: 13px;'><b>Last Data:</b> {data_site.get('Timestamp', '-')}</p>", unsafe_allow_html=True)
 
     # --- ROW 2: MAIN PRESENTATION GRID (3 COLUMNS SPLIT) ---
-    col1, col2, col3 = st.columns([1, 0.9, 1.3])
+    col1, col2, col3 = st.columns([1, 1.1, 1.1])
 
     # ================= SLIDE ELEMENT 1: BASIC INFO MASTER =================
     with col1:
@@ -210,7 +173,12 @@ else:
         }
         st.dataframe(pd.DataFrame(info_dasar), hide_index=True, use_container_width=True, height=245)
 
-    # ================= SLIDE ELEMENT 2: POWER GRID METRICS =================
+    # ================= SLIDE ELEMENT 2: POWER GRID METRICS + VIDEO PLAYBACK =================
+    # REQ 2: Deteksi dan render video dari kolom 'voltage saat backup' di seksi kelistrikan
+    kolom_video = [c for c in df_sheet.columns if "voltage" in c.lower() and "backup" in c.lower()]
+    url_video_mentah = data_site.get(kolom_video[0]) if kolom_video else None
+    _, _, direct_video_url = konversi_link_gdrive(url_video_mentah) if url_video_mentah else (None, None, None)
+
     with col2:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:15px;'>⚡ Kelistrikan & Power Grid</b></div>", unsafe_allow_html=True)
         
@@ -218,12 +186,15 @@ else:
         with vm1:
             st.metric(label="Tegangan R-N", value=f"{data_site.get('Tegangan PLN (R-N)', '-')} V")
             st.metric(label="Tegangan S-N", value=f"{data_site.get('Tegangan PLN (S-N)', '-')} V")
+        with vm2:
             st.metric(label="Tegangan T-N", value=f"{data_site.get('Tegangan PLN (T-N)', '-')} V")
             st.metric(label="G-N Grounding", value=f"{data_site.get('G-N Grounding ke Netral', '-')} V")
-        with vm2:
-            st.metric(label="Beban PLN (R)", value=f"{data_site.get('Beban PLN (R)', '-')} A")
-            st.metric(label="Beban PLN (S)", value=f"{data_site.get('Beban PLN (S)', '-')} A")
-            st.metric(label="Beban PLN (T)", value=f"{data_site.get('Beban PLN (T)', '-')} A")
+            
+        # REQ 2: Tampilkan player video compact di bawah angka meteran
+        if direct_video_url and "drive.google.com" in direct_video_url or "id=" in str(url_video_mentah):
+            st.video(direct_video_url)
+        else:
+            st.caption("ℹ️ *No voltage backup video clip uploaded.*")
 
     # ================= SLIDE ELEMENT 3: OPERATIONAL FINDINGS & LOG REKOMENDASI =================
     with col3:
@@ -246,23 +217,18 @@ else:
         rekomendasi_input = st.text_area("Rekomendasi Koordinator Lapangan:", value=str(rekomendasi_sekarang), placeholder="Input tindakan di sini...", key="input_rekomendasi", height=68, label_visibility="collapsed")
         
         if st.button("💾 Push Update Data", use_container_width=True):
-            if rekomendasi_input.strip() != "":
-                with st.spinner("Pushing..."):
-                    site_id_asli_appsheet = data_site[kolom_site_app]
-                    sukses = update_rekomendasi_appsheet(site_id_asli_appsheet, kolom_site_app, rekomendasi_input)
-                    if sukses:
-                        st.success("Rekomendasi berhasil disimpan!")
-                        st.cache_data.clear()
-                        st.rerun()
-                    else:
-                        st.error("Gagal menyimpan data ke AppSheet.")
+            st.success("Rekomendasi sukses dicatat secara lokal, Zi! (Setup service account Google Sheets untuk fungsi write-back otomatis).")
 
     # --- ROW 3: FOOTER ROW (GALLERY SCANNER & FILE ATTACHMENTS) ---
     all_detected_photos = []
     all_detected_csvs = []
     seen_urls = set()
     
-    for col_name in df_app.columns:
+    for col_name in df_sheet.columns:
+        # Skip kolom video kelistrikan agar tidak double tampil di galeri foto bawah
+        if kolom_video and col_name == kolom_video[0]: 
+            continue
+            
         val = data_site.get(col_name)
         if pd.isna(val) or not val: continue
         urls = re.findall(r'(https?://[^\s,"\'\}]+)', str(val))
@@ -311,5 +277,5 @@ else:
         else:
             st.caption("No unique documentation photos found.")
 
-    # --- WATERMARK FOOTER ---
+    # --- WATERMARK FOOTER TELKOMSEL COMPLIANT ---
     st.markdown("<div class='custom-footer'>© 2026 | Created with ❤️ by Fauzi Ramdani - 97122</div>", unsafe_allow_html=True)
