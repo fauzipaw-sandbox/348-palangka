@@ -11,7 +11,7 @@ st.set_page_config(layout="wide", page_title="Task Force 348 Dashboard")
 GOOGLE_SHEET_ID = "1FGKOzWoUrbf3PXN_ahgG1t-83JZT4H4sioQepePbBxM"
 
 # ⚠️ PENTING: PASTE URL WEB APP GOOGLE APPS SCRIPT LO DI SINI BIAR BISA SAVE KE GSHEET!
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/GANTI_PAKE_URL_APPS_SCRIPT_LO/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxCQUGt5_Jybed2AwFP4xXFru6GxuMoSwQpUZ63aK9o0WlUFnumOoseRWwgRmxZZ9XYtQ/exec"
 
 # ⚠️ PASTIKAN URL DAN KEY SUPABASE LO TETAP TERPASANG DI SINI!
 SUPABASE_URL = "https://sfyfijndolnwqklqnpmj.supabase.co"
