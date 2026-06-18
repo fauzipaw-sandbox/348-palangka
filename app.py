@@ -88,47 +88,45 @@ def load_data_from_supabase_dapot():
         return pd.DataFrame()
     except: return pd.DataFrame()
 
-# FIX TOTAL: Menggunakan operator resmi PostgREST (.ilike tanpa % untuk exact, .ilike dengan %25 untuk partial)
+# FIX TOTAL: Pencarian berbasis multi-permutasi exact match (.eq) via parameters anti-double-encode
 def fetch_inap_for_site(site_clean, site_asli):
-    variations = set([str(site_clean).strip(), str(site_asli).strip()])
-    if site_clean:
-        match = re.search(r'([A-Z]+)0+(\d+)', site_clean)
-        if match: variations.add(f"{match.group(1)}{match.group(2)}")
-            
-    valid_vars = [v for v in variations if v not in ["", "-", "nan"]]
-    if not valid_vars: return pd.DataFrame()
-    
-    extended_vars = set()
-    for v in valid_vars:
-        extended_vars.add(v)
-        clean_v = v.replace(" ", "")
-        extended_vars.add(clean_v)
+    variants = set()
+    for s in [site_clean, site_asli]:
+        if pd.isna(s) or str(s).strip() in ["", "-", "nan"]: continue
+        v = str(s).strip().upper()
+        variants.add(v)
+        variants.add(v.replace(" ", ""))
         
-        match_space = re.search(r'([A-Z]{2,4})(\d+)', clean_v)
+        # Bedah komponen huruf dan angka untuk bikin variasi spasi & strip otomatis
+        match_space = re.search(r'([A-Z]{2,4})[-_ ]*(\d+)', v.replace(" ", ""))
         if match_space:
             letters = match_space.group(1)
             digits = match_space.group(2)
-            extended_vars.add(f"{letters} {digits}") 
+            padded_digits = digits.zfill(3)
+            
+            variants.add(f"{letters}{padded_digits}")
+            variants.add(f"{letters} {padded_digits}")
+            variants.add(f"{letters}-{padded_digits}")
+            
             try:
                 short_digits = str(int(digits))
-                if short_digits != digits:
-                    extended_vars.add(f"{letters}{short_digits}")
-                    extended_vars.add(f"{letters} {short_digits}")
+                if short_digits != padded_digits:
+                    variants.add(f"{letters}{short_digits}")
+                    variants.add(f"{letters} {short_digits}")
+                    variants.add(f"{letters}-{short_digits}")
             except:
                 pass
                 
-    filters = []
-    for v in extended_vars:
-        # ilike tanpa persen berfungsi sebagai exact match case-insensitive di Supabase
-        filters.append(f"site_id.ilike.{v}")
-        if len(v.replace(" ", "")) >= 6:
-            # %25 adalah URL-encoded dari tanda % (wildcard resmi PostgreSQL/Supabase)
-            filters.append(f"site_id.ilike.%25{v}%25")
-            
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}?or=({','.join(filters)})&limit=1000"
+    if not variants: return pd.DataFrame()
+    
+    # Bungkus permutasi ke dalam parameter 'or' PostgREST murni tanpa simbol % liar
+    or_filter = ",".join([f"site_id.eq.{v}" for v in variants])
+    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE_INAP}"
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
+    params = { "or": f"({or_filter})", "limit": 2000 }
+    
     try:
-        res = requests.get(url, headers=headers, timeout=10)
+        res = requests.get(url, headers=headers, params=params, timeout=10)
         if res.status_code == 200: return pd.DataFrame(res.json())
     except: pass
     return pd.DataFrame()
@@ -219,7 +217,7 @@ else:
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
         st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 3: FINDINGS & GRAPH (FIXED KRONOLOGIS TIMELINE + SUPABASE OPERATOR)
+    # KOLOM 3: FINDINGS & GRAPH
     with c3:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>🔍 Field Findings</b></div>", unsafe_allow_html=True)
         st.markdown(f"""<div class='findings-grid'><div class='f-item'><b>Arus Recty:</b> <span>{data_site.get('Rectifier Current', '-')} A</span></div><div class='f-item'><b>Modul:</b> <span>{data_site.get('Jumlah Module', '-')} <span style='color:#ff5252;'>(F: {data_site.get('Total Module faulty', '-')})</span></span></div><div class='f-item'><b>BBT:</b> <span>{data_site.get('BBT >4 Jam', '-')}</span></div><div class='f-item'><b>Enva Val:</b> <span>{data_site.get('Enva Validasi', '-')}</span></div><div class='f-item'><b>LPU Enva:</b> <span>{data_site.get('Kondisi Modul Enva LPU', '-')}</span></div><div class='f-item'><b>Arrester:</b> <span>{data_site.get('Arrester Rectifier', '-')}</span></div></div>""", unsafe_allow_html=True)
@@ -229,6 +227,7 @@ else:
         t_id_asli = str(data_site.get('site_id', '')).strip()
         t_id_clean = str(data_site.get('site_clean_sheet', '')).strip()
         
+        # Eksekusi penarikan data super akurat harian, Zi
         df_trend = fetch_inap_for_site(t_id_clean, t_id_asli)
             
         if not df_trend.empty:
