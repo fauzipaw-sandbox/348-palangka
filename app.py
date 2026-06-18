@@ -72,7 +72,7 @@ def update_rekomendasi_gsheet(site_id_asli, teks_rekomendasi):
         return False, response.text
     except Exception as e: return False, str(e)
 
-# --- FUNGSI PULL DATA (DI-UPGRADE: BYPASS LIMIT 1000 BARIS SUPABASE) ---
+# --- FUNGSI PULL DATA (BYPASS 1000 LIMIT) ---
 @st.cache_data(ttl=60)
 def load_data_from_google_sheets():
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv"
@@ -81,7 +81,6 @@ def load_data_from_google_sheets():
 
 @st.cache_data(ttl=600)
 def load_data_from_supabase(table_name):
-    # LIMIT DITAMBAHKAN JADI 10000 AGAR DATA MINGGUAN GAK KEPOTONG
     url = f"{SUPABASE_URL}/rest/v1/{table_name}?select=*&limit=10000"
     headers = { "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}" }
     try:
@@ -129,12 +128,8 @@ else:
     .lightbox .close-lightbox { position: absolute; top: 20px; right: 40px; color: #fff; font-size: 40px; text-decoration: none; font-weight: bold; z-index: 99999999; text-shadow: 0px 2px 5px #000; }
     .lightbox .nav-arrow { position: absolute; top: 50%; color: #fff; font-size: 50px; font-weight: bold; text-decoration: none; transform: translateY(-50%); padding: 20px; z-index: 99999999; text-shadow: 0px 2px 8px #000; }
     .lightbox .prev-arrow { left: 40px; } .lightbox .next-arrow { right: 40px; }
-    
-    /* CSS CAPTION UNTUK JUDUL FOTO POPUP */
     .lightbox .caption-text { position: absolute; bottom: 30px; color: #ffc13b; font-size: 18px; font-weight: bold; text-align: center; width: 100%; text-shadow: 0px 2px 4px rgba(0,0,0,0.8); z-index: 99999999; font-family: sans-serif; letter-spacing: 0.5px; }
-    
     .video-overlay-btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(211, 47, 47, 0.85); color: white; border-radius: 50%; width: 26px; height: 24px; line-height: 24px; font-size: 11px; font-weight: bold; pointer-events: none; box-shadow: 0px 2px 5px rgba(0,0,0,0.5); }
-    
     div[data-testid="stMetric"] { background-color: #262730; padding: 5px 10px; border-radius: 4px; border: 1px solid #444; }
     .findings-grid { display: grid; grid-template-columns: auto auto; gap: 8px 15px; background-color: #262730; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; border: 1px solid #444; }
     .f-item { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 4px; }
@@ -168,7 +163,7 @@ else:
         }
         st.dataframe(pd.DataFrame(master_list), hide_index=True, use_container_width=True, height=350)
 
-    # KOLOM 2: TECHNICAL DETAIL (20 ITEMS WITH FALLBACK LOGIC)
+    # KOLOM 2: TECHNICAL DETAIL (20 ITEMS WITH FALLBACK TO SUPABASE)
     with c2:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>⚙️ Site Technical Detailed Specs</b></div>", unsafe_allow_html=True)
         tech_mapping = [
@@ -207,14 +202,12 @@ else:
         st.markdown("<b style='font-size:11px; color:#aaa;'>📈 Weekly Availability Trend (Power & Transport)</b>", unsafe_allow_html=True)
         
         if not df_sup_inap.empty:
-            # Cari kolom yang jadi ID di inap_data (jaga-jaga kalau namanya bukan site_id)
-            inap_site_col = [c for c in df_sup_inap.columns if 'site' in str(c).lower() or 'id' in str(c).lower()]
-            if inap_site_col:
-                df_sup_inap['site_clean'] = df_sup_inap[inap_site_col[0]].astype(str).apply(format_site_id)
+            # FIX PATEN: Paksa baca dari nama kolom 'site_id' saja karena kolom 'id' isinya auto-increment
+            if 'site_id' in df_sup_inap.columns:
+                df_sup_inap['site_clean'] = df_sup_inap['site_id'].astype(str).apply(format_site_id)
                 target_site = format_site_id(data_site.get('site_id', ''))
                 target_sheet = format_site_id(data_site.get('site_clean_sheet', ''))
                 
-                # Filter data berdasarkan ID Supabase atau ID Gsheet (Biar sakti)
                 d_trend = df_sup_inap[(df_sup_inap['site_clean'] == target_site) | (df_sup_inap['site_clean'] == target_sheet)]
                 
                 if not d_trend.empty:
@@ -224,16 +217,17 @@ else:
                     
                     if col_w and col_p and col_t:
                         chart_data = d_trend[[col_w[0], col_p[0], col_t[0]]].copy()
-                        
-                        # Pembersih Angka Super (Hapus %, ganti koma jadi titik, paksa jadi float)
                         chart_data[col_p[0]] = chart_data[col_p[0]].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
                         chart_data[col_t[0]] = chart_data[col_t[0]].astype(str).str.replace('%','').str.replace(',','.').astype(float, errors='coerce')
                         
                         chart_data.columns = ['Week', 'Power (%)', 'Transport (%)']
                         st.line_chart(chart_data.sort_values(by='Week').set_index('Week'), height=155)
                     else: st.caption(f"ℹ️ Format kolom di inap_data tidak cocok.")
-                else: st.caption(f"ℹ️ Belum ada data mingguan untuk {target_site} di inap_data.")
-            else: st.caption("ℹ️ Tidak menemukan kolom Site ID di tabel inap_data.")
+                else: 
+                    st.caption(f"ℹ️ Belum ada data mingguan untuk {target_site} di inap_data.")
+                    with st.expander("🛠️ Debugger"):
+                        st.write("Site IDs di Supabase inap_data:", df_sup_inap['site_clean'].unique()[:10])
+            else: st.caption("ℹ️ Tidak menemukan kolom 'site_id' di tabel inap_data.")
         else: st.caption("ℹ️ Gagal memuat tabel inap_data dari Supabase.")
 
     # KOLOM 4: RECOMMENDATION
@@ -305,7 +299,6 @@ else:
             content = f'<iframe src="{p["embed"]}" width="80%" height="80%" style="border:none; background:#000; border-radius:8px;" allow="autoplay"></iframe>' if p['is_vid'] else f'<img src="{p["zoom"]}">'
             ovr = '<div class="video-overlay-btn">▶</div>' if p['is_vid'] else ''
             
-            # INJEKSI CLASS CAPTION-TEXT DI DALAM LIGHTBOX
             html_str += f'<input type="checkbox" id="hide-{sid}" class="hide-checkbox"><div class="photo-card"><label for="hide-{sid}" class="exclude-btn" title="Hide">&times;</label><a href="#lightbox-{sid}"><div style="position:relative;"><img src="{p["thumb"]}" style="width:100px; height:75px; object-fit:cover; border:1px solid #555; border-radius:4px;"/><div class="video-overlay-btn">{ovr}</div></div></a><div style="font-size:10px; margin-top:4px; color:#ccc; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{p["label"]}</div></div><div id="lightbox-{sid}" class="lightbox"><a href="#" class="close-lightbox">&times;</a>{nav}{content}<div class="caption-text">{p["label"]}</div></div>'
             
         if html_str: st.markdown(f'<div class="gallery-container">{html_str}</div>', unsafe_allow_html=True)
