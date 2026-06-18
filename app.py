@@ -53,9 +53,7 @@ def konversi_link_gdrive(url_tunggal):
         return thumb_url, zoom_url, dl_url, embed_url
     return link_bersih, link_bersih, link_bersih, None
 
-# --- REVISI 1 & 2: Logika Deteksi Nilai Teknis dengan Cerdas ---
 def dapatkan_nilai_teknis(row, kolom_sheet, kolom_supabase):
-    # Penyelamat duplikat kolom Baterai di Google Sheet (Pandas otomatis namain .1 belakangnya)
     val_sheet = None
     if kolom_sheet in row:
         val_sheet = row.get(kolom_sheet)
@@ -69,7 +67,6 @@ def dapatkan_nilai_teknis(row, kolom_sheet, kolom_supabase):
     if pd.notna(val_sheet) and str(val_sheet).strip() not in ["", "-", "nan"]:
         return str(val_sheet).strip()
     
-    # Fallback intip data ke dapot_data Supabase
     val_sup = row.get(f"{kolom_supabase}_dapot") if f"{kolom_supabase}_dapot" in row else row.get(kolom_supabase)
     if pd.notna(val_sup) and str(val_sup).strip() not in ["", "-", "nan"]:
         return str(val_sup).strip()
@@ -212,7 +209,6 @@ else:
         }
         st.dataframe(pd.DataFrame(master_list), hide_index=True, use_container_width=True, height=280)
 
-    # REVISI 1 & 3: PENYESUAIAN MAP SPEK TEKNIS & PENGHAPUSAN FIXED HEIGHT SCROLLBAR
     with c2:
         st.markdown("<div class='ppt-card-blue'><b style='font-size:14px;'>⚙️ Site Technical Detailed Specs</b></div>", unsafe_allow_html=True)
         tech_mapping = [
@@ -227,19 +223,19 @@ else:
             ("Arus T", "Beban PLN (T)", "Beban PLN (T)"),
             ("Type recti 1", "Type Rectifier", "Type Rectifier"), 
             ("Jumlah Module 1", "Jumlah Module", "Jumlah Module"), 
-            ("Type batt 1", "Type Batteri", "Type Battery"),        # Kolom Pertama di GSheet
+            ("Type batt 1", "Type Batteri", "Type Battery"),        
             ("Jumlah batt 1", "Jumlah Battery", "Jumlah Battery"), 
             ("DC Voltage 1", "DC Voltage", "DC Voltage"), 
             ("Load Current 1", "Rectifier Current", "Rectifier Current"),
             ("Type recti 2", "Type Rectifier 2", "Type Rectifier 2"), 
             ("Jumlah Module 2", "Jumlah Module 2", "Jumlah Module 2"), 
-            ("Type batt 2", "Type Batteri.1", "Type Battery 2"),    # Kolom Kedua di GSheet (Auto .1 oleh Pandas)
+            ("Type batt 2", "Type Batteri.1", "Type Battery 2"),    
             ("Jumlah batt 2", "Jumlah Battery 2", "Jumlah Battery 2"), 
             ("Load current recti 2", "Load current recti 2", "Load current recti 2")
         ]
         tech_rows = [{"Detail Parameter": l, "Value": dapatkan_nilai_teknis(data_site, cs, csb)} for l, cs, csb in tech_mapping]
-        # REVISI 3: height=None dilepas agar tabel memanjang ke bawah responsif tanpa scrollbar ngumpet
-        st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=None)
+        # FIX ERROR: Diganti jadi height=750 biar gak error dan semua list terbaca tanpa scroll
+        st.dataframe(pd.DataFrame(tech_rows), hide_index=True, use_container_width=True, height=750)
 
     # KOLOM 3: FINDINGS & GRAPH
     with c3:
@@ -323,13 +319,12 @@ else:
         else: 
             st.caption(f"ℹ️ Belum ada data harian untuk site ini di tabel inap_data.")
 
-    # KOLOM 4: RECOMMENDATION (REVISI 3: DYNAMIC BINDING KEY PENGHANCUR BUG SYNC STATE)
+    # KOLOM 4: RECOMMENDATION
     with c4:
         st.markdown("<div class='ppt-card-gold'><b style='font-size:14px;'>📝 Action Plan</b></div>", unsafe_allow_html=True)
         reko_val = data_site.get('Rekomendasi Perbaikan', '')
         if pd.isna(reko_val): reko_val = ""
         
-        # REVISI 3: Key dibikin dinamis per target site biar isinya otomatis ganti pas lo mindah dropdown dropdown
         rekomendasi_input = st.text_area("Rekomendasi Perbaikan:", value=str(reko_val), placeholder="Input rekomendasi...", key=f"input_rekomendasi_{t_id_clean}", height=230, label_visibility="collapsed")
         
         @st.dialog("Konfirmasi")
